@@ -108,11 +108,49 @@
   function extractSwipePage() {
     const records = extractSwipeRecords();
     const pageText = clean(document.body?.innerText);
+    const pager = document.querySelector('.pagination, .pager, [aria-label="分页"]');
+    const current = Number(clean(pager?.querySelector('.active, [aria-current="page"]')?.textContent)) ||
+      Number(document.querySelector('[name="pageNo"]')?.value) ||
+      Number(new URL(location.href).searchParams.get('pageNo')) || 1;
+    const total = Number(pageText.match(/共\s*(\d+)\s*条/)?.[1]);
+    const rowTimes = Array.from(document.querySelectorAll('tr')).map((row) =>
+      clean(row.textContent).match(/\d{4}-\d{2}-\d{2} [0-2]\d:[0-5]\d:[0-5]\d/)?.[0]
+    ).filter(Boolean);
+    const next = nextSwipeControl(current);
     return {
       ready: records.length > 0 || /共\s*\d+\s*条/.test(pageText),
-      records
+      records,
+      pagination: {
+        current, total: Number.isFinite(total) ? total : null,
+        rowCount: rowTimes.length, signature: JSON.stringify(rowTimes),
+        hasNext: Boolean(next)
+      }
     };
   }
 
-  globalThis.__slaiAttendance = { findAttendanceUrl, extractAttendance, extractSwipeRecords, extractSwipePage };
+  function nextSwipeControl(current) {
+    const controls = Array.from(document.querySelectorAll('.pagination a, .pagination button, .pager a, .pager button, a[rel="next"], [aria-label="分页"] a'));
+    const enabled = controls.filter((el) => !el.closest('.disabled, [aria-disabled="true"]') && !el.disabled);
+    const next = enabled.find((el) => el.rel === 'next' || /^(?:下一页|下页)$/.test(clean(el.textContent)) ||
+      /^(?:下一页|下页)$/.test(el.getAttribute('title') || el.getAttribute('aria-label') || ''));
+    if (next) return next;
+    // Numbered links are useful when the portal renders only numeric navigation.
+    return enabled.find((el) => clean(el.textContent) === String(current + 1)) || null;
+  }
+
+  function advanceSwipePage() {
+    const page = extractSwipePage();
+    const next = nextSwipeControl(page.pagination.current);
+    if (!next) return false;
+    // Use the portal's own control, preserving its form filters and session.
+    const href = next.getAttribute('href');
+    if (href && !href.startsWith('javascript:') && href !== '#') {
+      const target = new URL(href, location.href);
+      if (target.origin !== location.origin || target.pathname !== location.pathname) return false;
+    }
+    next.click();
+    return true;
+  }
+
+  globalThis.__slaiAttendance = { findAttendanceUrl, extractAttendance, extractSwipeRecords, extractSwipePage, advanceSwipePage };
 })();

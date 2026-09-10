@@ -135,6 +135,54 @@ async function waitForReader(tabId, method, accept, timeoutMs = 10000) {
   return value;
 }
 
+async function collectSwipePages(tabId, queryDate) {
+  const records = new Map();
+  const visited = new Set();
+  let previous = null;
+  let rowsRead = 0;
+  let expectedTotal = null;
+  for (let index = 0; index < 50; index++) {
+    const deadline = Date.now() + 15000;
+    let page = null;
+    do {
+      const tab = await chrome.tabs.get(tabId);
+      if (isAuthUrl(tab.url)) throw Object.assign(new Error('登录已过期'), { code: 'AUTH_EXPIRED' });
+      if (!isPortalUrl(tab.url)) throw new Error('刷卡页面地址无效');
+      if (tab.status === 'complete') {
+        try {
+          const candidate = await runReader(tabId, 'extractSwipePage');
+          if (candidate?.ready && candidate.pagination && (!previous ||
+            (candidate.pagination.current === previous.current + 1 && candidate.pagination.signature !== previous.signature))) {
+            page = candidate;
+            break;
+          }
+        } catch { /* Navigation can briefly destroy the reader's execution context. */ }
+      }
+      await delay(250);
+    } while (Date.now() < deadline);
+    if (!page) throw new Error('刷卡分页读取未完成');
+    const meta = page.pagination;
+    if (visited.has(meta.signature) || (index === 0 && meta.current !== 1)) throw new Error('刷卡分页重复');
+    visited.add(meta.signature);
+    if (expectedTotal === null) expectedTotal = meta.total;
+    if (expectedTotal !== meta.total) throw new Error('刷卡记录在读取期间变化');
+    rowsRead += meta.rowCount;
+    for (const record of page.records) {
+      if (record.timestamp.startsWith(queryDate + ' ')) records.set(record.timestamp + '|' + record.direction, record);
+    }
+    if (!meta.hasNext) {
+      if (expectedTotal !== null && rowsRead !== expectedTotal) throw new Error('刷卡记录未读取完整');
+      return [...records.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    }
+    if (index === 49) break;
+    previous = meta;
+    // Each page is an additional school request, so never fetch pages concurrently.
+    await delay(1500);
+    if (!await runReader(tabId, 'advanceSwipePage')) throw new Error('无法翻到下一页');
+  }
+  throw new Error('刷卡页数超过安全上限');
+}
+
 async function scrapeAttendance({ sourceTabId = null } = {}) {
   let tab;
   let closeWhenDone = false;
@@ -193,19 +241,15 @@ async function scrapeAttendance({ sourceTabId = null } = {}) {
     const { studentNumber, ...attendanceData } = data;
     let todaySwipes = [];
     if (studentNumber) {
+      const queryDate = localDateKey();
       const recordsUrl = attendanceUrl.replace(
         /\/edu\/acm\/swipe\/attendList(?:[?#].*)?$/,
-        `/edu/acm/swipe/list?userNo=${encodeURIComponent(studentNumber)}&swipeDate=${localDateKey()}`
+        `/edu/acm/swipe/list?userNo=${encodeURIComponent(studentNumber)}&swipeDate=${queryDate}`
       );
       if (recordsUrl !== attendanceUrl) {
         await chrome.tabs.update(tab.id, { url: recordsUrl });
         tab = await waitForTab(tab.id, "/edu/acm/swipe/list");
-        const swipePage = await waitForReader(
-          tab.id,
-          "extractSwipePage",
-          (value) => value?.ready === true
-        );
-        todaySwipes = swipePage?.records || [];
+        todaySwipes = await collectSwipePages(tab.id, queryDate);
       }
     }
 
@@ -220,7 +264,7 @@ async function scrapeAttendance({ sourceTabId = null } = {}) {
   } catch (error) {
     await saveState({
       ...(await getState()),
-      status: "error",
+      status: error.code === 'AUTH_EXPIRED' ? 'auth' : 'error',
       message: "读取考勤失败，请稍后重试或打开学校系统检查"
     });
   } finally {
