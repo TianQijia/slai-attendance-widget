@@ -126,7 +126,35 @@ async function main() {
     assert.equal(parsed.ready, true);
     assert.deepEqual(parsed.records, fixtureState.todaySwipes);
     await page.setContent('<table><tr><td>宿舍_道闸入1</td><td>进门</td><td>2030-04-08 09:00:00</td></tr></table><div>共1条</div>');
-    assert.deepEqual(await page.evaluate(() => __slaiAttendance.extractSwipePage()), { ready: true, records: [] });
+    assert.deepEqual((await page.evaluate(() => __slaiAttendance.extractSwipePage())).records, []);
+    // Three visits, newest first; a dorm-only middle page must not end collection.
+    await page.evaluate(() => {
+      window.renderSwipeFixture = (number) => {
+        const pages = [
+          [['闸机-东', '出门', '11:00:00'], ['闸机-东', '进门', '10:00:00'], ['闸机-东', '出门', '09:00:00']],
+          [['宿舍_道闸', '出门', '08:45:00']],
+          [['闸机-东', '进门', '08:00:00'], ['闸机-东', '出门', '07:00:00'], ['闸机-东', '进门', '06:00:00']]
+        ];
+        document.body.innerHTML = `<table>${pages[number - 1].map(([gate, direction, time]) => `<tr><td>${gate}</td><td>${direction}</td><td>2030-04-08 ${time}</td></tr>`).join('')}</table><div>共7条</div><div class="pagination"><span class="active">${number}</span><li class="${number === 3 ? 'disabled' : ''}"><a href="#" onclick="renderSwipeFixture(${number + 1});return false">下一页</a></li></div>`;
+      };
+      renderSwipeFixture(1);
+    });
+    const listener = { addListener() {}, removeListener() {} };
+    const paginationContext = vm.createContext({ URL, Date, setTimeout, clearTimeout,
+      importScripts() {}, __slaiState: { sanitizeState },
+      chrome: { runtime: { onInstalled: listener, onStartup: listener, onMessage: listener },
+        alarms: { onAlarm: listener }, action: { onClicked: listener }, windows: { onRemoved: listener },
+        tabs: { onUpdated: listener, get: async () => ({ status: 'complete', url: 'https://stu.slai.edu.cn/a/edu/acm/swipe/list' }) } }
+    });
+    vm.runInContext(fs.readFileSync(path.join(extension, 'background.js'), 'utf8'), paginationContext);
+    paginationContext.runReader = async (_id, method) => page.evaluate((name) => globalThis.__slaiAttendance[name](), method);
+    const threeVisits = await vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext);
+    assert.equal(threeVisits.length, 6);
+    assert.equal(attendanceSeconds({ days: [], todaySwipes: threeVisits }, instant('12:00:00')).seconds, 10800);
+    await page.evaluate(() => { renderSwipeFixture(1); document.querySelector('.pagination').remove(); });
+    await assert.rejects(vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext), /未读取完整/);
+    await page.evaluate(() => { renderSwipeFixture(1); document.querySelector('.pagination a').setAttribute('href', 'https://example.invalid/'); });
+    assert.equal(await page.evaluate(() => __slaiAttendance.advanceSwipePage()), false);
     await page.close();
 
     const ui = await context.newPage();
@@ -169,7 +197,7 @@ async function main() {
     assert.equal(await ui.locator("#authCard").isVisible(), true);
     assert.match(await ui.locator("#nextRefresh").innerText(), /自动刷新已暂停/);
     assert.deepEqual(unexpected, [], "No unexpected network requests during tests");
-    console.log("Passed: privacy migration, safe errors, 30-minute scheduling, auth pause, gate filtering, re-entry, deterministic live UI and login UI.");
+    console.log("Passed: pagination across three visits and dorm-only page, incomplete-page rejection, privacy, 30-minute scheduling, auth pause, gate filtering and live UI.");
   } finally {
     await browser.close();
   }

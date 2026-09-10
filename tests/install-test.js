@@ -52,7 +52,7 @@ const root = path.resolve(__dirname, "..");
     await page.locator("#authCard:not(.hidden)").waitFor();
     assert.match(await page.locator("#nextRefresh").innerText(), /自动刷新已暂停/);
     const version = await worker.evaluate(() => chrome.runtime.getManifest().version);
-    assert.equal(version, "1.1.0");
+    assert.equal(version, require("../package.json").version);
     console.log("ZIP installation passed in an isolated Chromium profile; school requests were simulated.");
   } finally {
     if (context) await context.close();
