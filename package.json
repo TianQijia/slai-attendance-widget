@@ -1,6 +1,6 @@
 {
   "name": "slai-attendance-widget",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "SLAI campus attendance Chrome extension",
   "license": "MIT",
