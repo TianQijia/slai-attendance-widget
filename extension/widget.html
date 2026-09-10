@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SLAI 考勤</title>
+    <link rel="stylesheet" href="widget.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="todayLabel">今日考勤</p>
+          <h1>在校时间</h1>
+        </div>
+        <div class="top-actions">
+          <button class="icon-button" id="openPortal" title="打开学校系统" aria-label="打开学校系统">↗</button>
+          <button class="icon-button" id="refresh" title="立即刷新" aria-label="立即刷新">↻</button>
+        </div>
+      </header>
+
+      <section class="today-card">
+        <div class="progress-ring" id="progressRing">
+          <div class="progress-core">
+            <strong id="todayDuration">--:--</strong>
+            <span>已累计</span>
+          </div>
+        </div>
+        <div class="today-detail">
+          <div class="status-line">
+            <span class="status-dot" id="statusDot"></span>
+            <span id="statusText">正在读取</span>
+          </div>
+          <div class="metric">
+            <span>每日要求</span>
+            <strong>6 小时</strong>
+          </div>
+          <div class="metric remaining">
+            <span id="remainingLabel">距离完成</span>
+            <strong id="remaining">--</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="auth-card hidden" id="authCard">
+        <div>
+          <strong>需要重新登录</strong>
+          <p>请使用自己的学校账号登录。小组件不会读取或保存密码。</p>
+        </div>
+        <button id="login">去登录</button>
+      </section>
+
+      <section class="month-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">本月记录</p>
+            <h2 id="monthTitle">---- 年 -- 月</h2>
+          </div>
+          <span class="summary" id="monthSummary">-- / -- 天达标</span>
+        </div>
+        <div class="day-list" id="dayList">
+          <div class="skeleton"></div>
+          <div class="skeleton"></div>
+          <div class="skeleton"></div>
+        </div>
+      </section>
+
+      <footer>
+        <span id="updatedAt">尚未更新</span>
+        <span id="nextRefresh">每 30 分钟自动刷新</span>
+      </footer>
+    </main>
+    <script src="time-utils.js"></script>
+    <script src="widget.js"></script>
+  </body>
+</html>

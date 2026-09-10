@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "minimum_chrome_version": "120",
+  "name": "SLAI 考勤小组件",
+  "description": "每 30 分钟读取一次学校考勤，显示今日进度和当月每日时长。",
+  "version": "1.1.0",
+  "permissions": [
+    "alarms",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://stu.slai.edu.cn/*",
+    "https://sts.slai.edu.cn/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "打开考勤小组件"
+  }
+}

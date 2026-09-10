@@ -1,0 +1,118 @@
+(() => {
+  const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
+  const absoluteUrl = (value) => {
+    try {
+      return new URL(value, location.href).href;
+    } catch {
+      return null;
+    }
+  };
+
+  function findAttendanceUrl() {
+    const bodyText = clean(document.body?.innerText);
+    if (bodyText.includes("月度考勤统计汇总") && document.querySelector("table")) {
+      return location.href;
+    }
+
+    const attendanceFrame = document.querySelector('iframe[src*="/edu/acm/swipe/attendList"]');
+    if (attendanceFrame) return absoluteUrl(attendanceFrame.getAttribute("src"));
+
+    const links = Array.from(document.querySelectorAll("a[href]"));
+    const exact = links.find((link) => clean(link.textContent) === "学生考勤统计查询");
+    const fuzzy = links.find((link) => clean(link.textContent).includes("考勤统计查询"));
+    const link = exact || fuzzy || Array.from(document.querySelectorAll("a")).find((item) =>
+      clean(item.textContent).includes("考勤统计查询")
+    );
+    const href = link?.getAttribute("href");
+    if (href && href !== "#" && !href.startsWith("javascript:")) return absoluteUrl(href);
+
+    const onclick = link?.getAttribute("onclick") || "";
+    const route = onclick.match(/url\s*:\s*['\"]([^'\"]+)/)?.[1];
+    if (!route) return null;
+
+    const mainFrame = document.querySelector('iframe[src*="/sys/user/main"]');
+    const sessionPath = mainFrame?.getAttribute("src")?.match(/^(\/a(?:;JSESSIONID=[^/]+)?)/)?.[1];
+    return absoluteUrl(`${sessionPath || "/a"}${route.startsWith("/") ? route : `/${route}`}`);
+  }
+
+  function extractAttendance() {
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    const durationPattern = /^(?:\d{1,3}:[0-5]\d:[0-5]\d|0)$/;
+    const monthPattern = /^\d{4}-\d{2}$/;
+    const daysByDate = new Map();
+
+    for (const row of document.querySelectorAll("tr")) {
+      const cells = Array.from(row.querySelectorAll("th,td")).map((cell) => clean(cell.innerText));
+      const dateIndex = cells.findIndex((cell) => datePattern.test(cell));
+      if (dateIndex < 0) continue;
+
+      const durationIndex = cells.findIndex((cell, index) => index > dateIndex && durationPattern.test(cell));
+      if (durationIndex < 0) continue;
+
+      const type = cells.find((cell) => /^(?:工作日|法定节假日|休息日|调休日)$/.test(cell)) || "";
+      const weekday = cells.find((cell) => /^周[一二三四五六日天]$/.test(cell)) || "";
+      const qualifiedCell = cells.slice(durationIndex + 1).find((cell) => /^(?:是|否)$/.test(cell));
+      const record = {
+        date: cells[dateIndex],
+        weekday,
+        type,
+        duration: cells[durationIndex],
+        qualified: qualifiedCell === "是"
+      };
+
+      const previous = daysByDate.get(record.date);
+      if (!previous || cells.length > previous.cellCount) {
+        daysByDate.set(record.date, { ...record, cellCount: cells.length });
+      }
+    }
+
+    const monthValues = Array.from(document.querySelectorAll("input,select"))
+      .map((element) => clean(element.value))
+      .filter((value) => monthPattern.test(value));
+    const sortedDays = Array.from(daysByDate.values())
+      .map(({ cellCount, ...day }) => day)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const inferredMonth = sortedDays.find((day) => day.date)?.date.slice(0, 7) || "";
+    const month = monthValues[0] || inferredMonth;
+    const days = month ? sortedDays.filter((day) => day.date.startsWith(month)) : sortedDays;
+
+    const pageText = clean(document.body?.innerText);
+    const studentNumber = pageText.match(/学号[：:]?\s*(\d{6,})/)?.[1] || "";
+    return {
+      month,
+      days,
+      studentNumber
+    };
+  }
+
+  function extractSwipeRecords() {
+    const timePattern = /^\d{4}-\d{2}-\d{2} [0-2]\d:[0-5]\d:[0-5]\d$/;
+    const records = [];
+
+    for (const row of document.querySelectorAll("tr")) {
+      const cells = Array.from(row.querySelectorAll("td")).map((cell) => clean(cell.innerText));
+      // 学校的月度考勤只使用“闸机-…”校园道闸；“宿舍_道闸…”不计入。
+      const campusGate = cells.find((cell) => /^闸机[-_]/.test(cell) && !cell.includes("宿舍"));
+      const timestamp = cells.find((cell) => timePattern.test(cell));
+      const direction = cells.find((cell) => /^(?:进门|出门)$/.test(cell));
+      if (!campusGate || !timestamp || !direction) continue;
+      records.push({
+        direction,
+        timestamp
+      });
+    }
+
+    return records.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  }
+
+  function extractSwipePage() {
+    const records = extractSwipeRecords();
+    const pageText = clean(document.body?.innerText);
+    return {
+      ready: records.length > 0 || /共\s*\d+\s*条/.test(pageText),
+      records
+    };
+  }
+
+  globalThis.__slaiAttendance = { findAttendanceUrl, extractAttendance, extractSwipeRecords, extractSwipePage };
+})();
