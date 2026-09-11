@@ -31,6 +31,7 @@ function saveAccess() {
   }
 }
 function useToken(value) {
+  if (typeof resetRemoteRefresh === "function") resetRemoteRefresh();
   token = value; tokenVerified = false; credentialRevision++;
   accessDiagnostic = null; connectionDiagnostic = null;
   // Even before the service responds, a reload of this tab can retry the link.
@@ -55,6 +56,7 @@ function accessView() {
   $("accessForm").classList.toggle("hidden", tokenVerified && !problem && !editingAccess);
   $("changeViewLink").classList.toggle("hidden", !tokenVerified || editingAccess);
   $("forgetView").classList.toggle("hidden", !token && !rememberedToken);
+  $("accessNotice").classList.toggle("hidden", tokenVerified && !problem);
   $("accessMessage").textContent = problem ? describeDiagnostic(problem).reason + "。" + describeDiagnostic(problem).action
     : tokenVerified ? "已取得查看权限。" : token ? "正在验证查看链接…" : describeDiagnostic({ code: "VIEW_TOKEN_MISSING" }).action;
   $("accessStorageStatus").textContent = storageDiagnostic ? describeDiagnostic(storageDiagnostic).reason + "。" + describeDiagnostic(storageDiagnostic).action
@@ -67,11 +69,12 @@ function connectionView() {
   if (!diagnostic && (!envelope?.lastSeenAt || viewNow() - Date.parse(envelope.lastSeenAt) > 150000)) diagnostic = { code: "SOURCE_STALE", stage: "viewer_fetch" };
   if (!diagnostic && currentState?.lastCompleteToday && viewNow() - Date.parse(currentState.lastCompleteToday.updatedAt) > 35 * 60000) diagnostic = { code: "DATA_STALE", stage: "viewer_fetch" };
   $("connectionStatus").textContent = diagnostic ? describeDiagnostic(diagnostic).reason : "本地服务可达 · 电脑扩展最近已联系";
-  const reports = [diagnostic, accessDiagnostic !== diagnostic ? accessDiagnostic : null, storageDiagnostic].filter(Boolean).map(d => diagnosticReport(d));
+  const reports = [diagnostic, accessDiagnostic !== diagnostic ? accessDiagnostic : null, storageDiagnostic, typeof remoteRefreshDiagnostic === "function" ? remoteRefreshDiagnostic() : null].filter(Boolean).map(d => diagnosticReport(d));
   setReportText($("connectionReport"), [...new Set(reports)].join("\n\n"), $("connectionCopyStatus"));
   if (currentState?.status === "auth") $("connectionStatus").textContent += " · 请在电脑端完成学校登录";
   $("nextRefresh").textContent = "每 15 秒检查查看服务 · 学校每 30 分钟同步";
   accessView();
+  if (typeof refreshViewState === "function") refreshViewState();
 }
 async function fetchState() {
   if (activeRequest) {
@@ -82,9 +85,7 @@ async function fetchState() {
   }
   const revision = credentialRevision, requestToken = token;
   requestedRevision = revision;
-  $("refreshView").disabled = true;
   $("reconnect").disabled = true;
-  $("refreshView").textContent = "读取中…";
   $("viewerRefreshStatus").textContent = "正在读取电脑端最新结果…";
   activeRequest = (async () => {
     const started = performance.now();
@@ -97,6 +98,7 @@ async function fetchState() {
       const next = await response.json();
       if (next.schemaVersion !== 1 || !Number.isFinite(Date.parse(next.serverTime)) || (next.state !== null && next.state?.schemaVersion !== 4)) throw globalThis.__slaiErrors.codedError("INVALID_SCHEMA");
       if (revision !== credentialRevision) return;
+      if (typeof updateRemoteRefresh === "function") updateRemoteRefresh(next);
       envelope = next; anchorTime = Date.parse(next.serverTime); anchorMono = performance.now(); lastContact = anchorTime;
       connectionDiagnostic = null;
       const needsSave = !tokenVerified || storageDiagnostic;
@@ -105,7 +107,7 @@ async function fetchState() {
       render(next.state || {});
     } catch (error) {
       if (revision !== credentialRevision) return;
-      connectionDiagnostic = diagnoseError(error.code ? error : globalThis.__slaiErrors.codedError(controller.signal.aborted ? "VIEW_TIMEOUT" : "VIEW_UNREACHABLE", controller.signal.aborted ? { timeoutMs: 3000 } : {}, error), { stage: "viewer_fetch", operation: "http_request" });
+      connectionDiagnostic = diagnoseError(typeof error?.code === "string" ? error : globalThis.__slaiErrors.codedError(controller.signal.aborted ? "VIEW_TIMEOUT" : "VIEW_UNREACHABLE", controller.signal.aborted ? { timeoutMs: 3000 } : {}, error), { stage: "viewer_fetch", operation: "http_request" });
       if (connectionDiagnostic.code === "VIEW_TOKEN_REJECTED") {
         tokenVerified = false;
         // Remove only the rejected credential, preserving a newer one saved by another tab.
@@ -117,9 +119,7 @@ async function fetchState() {
       if (currentState) renderToday(currentState); else render({});
     } finally {
       lastRequestMs = Math.round(performance.now() - started); clearTimeout(timeout);
-      $("refreshView").disabled = false;
       $("reconnect").disabled = false;
-      $("refreshView").textContent = "刷新";
       $("viewerRefreshStatus").textContent = connectionDiagnostic ? describeDiagnostic(connectionDiagnostic).reason : lastContact ? "已读取电脑结果 · " + formatInstant(new Date(lastContact).toISOString()) : "尚未取得查看结果";
       connectionView();
     }
@@ -151,6 +151,7 @@ $("rememberView").addEventListener("change", () => {
 });
 $("changeViewLink").addEventListener("click", () => { editingAccess = true; accessView(); $("viewLink").focus(); });
 $("forgetView").addEventListener("click", () => {
+  if (typeof resetRemoteRefresh === "function") resetRemoteRefresh();
   token = ""; tokenVerified = false; credentialRevision++; rememberedToken = "";
   storageDiagnostic = null;
   storageAction("sessionStorage", "storage_set", "viewToken", null);
@@ -162,7 +163,7 @@ $("forgetView").addEventListener("click", () => {
   $("viewerRefreshStatus").textContent = "已退出本页查看";
 });
 window.addEventListener("hashchange", () => { if (consumeFragment()) fetchState(); });
-$("refreshView").addEventListener("click", fetchState);
+$("openAccess").addEventListener("click", () => { $("accessCard").open = true; $("accessCard").scrollIntoView({ block: "start", behavior: "smooth" }); });
 $("reconnect").addEventListener("click", fetchState);
 $("copyConnection").addEventListener("click", () => copyReport($("connectionReport"), $("connectionCopyStatus"), "已复制连接排错信息"));
 $("checkNetwork").addEventListener("click", async () => {

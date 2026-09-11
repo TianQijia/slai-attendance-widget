@@ -111,6 +111,7 @@ async function run() {
     assert.match(await page.locator("#dataSource").innerText(), /上次完整结果/);
     assert.equal(await page.locator("#login").count(), 0); assert.equal(await page.locator("#refresh").count(), 0);
     assert.equal(new URL(page.url()).hash, "");
+    await page.locator("#connectionDetails > summary").click();
     await post(); await page.locator("#reconnect").click();
     await page.waitForFunction(() => document.querySelector("#statusText").textContent.includes("08:10:00"));
     assert.equal(await page.locator(".day-row.today").count(), 1);

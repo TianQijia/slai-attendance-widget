@@ -3,6 +3,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { LIMIT, validateStateEnvelope } = require("./protocol");
+const { createRefreshControl } = require("./refresh-control");
 const { codedError, diagnoseError } = globalThis.__slaiErrors;
 const root = path.resolve(__dirname, "..");
 const PRIVATE_IP = /^(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})$/;
@@ -44,9 +45,11 @@ function tokenMatches(header, token) {
 const staticFiles = {
   "/": ["companion/viewer.html", "text/html; charset=utf-8"],
   "/viewer.js": ["companion/viewer.js", "text/javascript; charset=utf-8"],
+  "/viewer-refresh.js": ["companion/viewer-refresh.js", "text/javascript; charset=utf-8"],
   "/widget.css": ["extension/widget.css", "text/css; charset=utf-8"],
   "/view.js": ["extension/view.js", "text/javascript; charset=utf-8"],
   "/report-utils.js": ["extension/report-utils.js", "text/javascript; charset=utf-8"],
+  "/refresh-utils.js": ["extension/refresh-utils.js", "text/javascript; charset=utf-8"],
   "/time-utils.js": ["extension/time-utils.js", "text/javascript; charset=utf-8"],
   "/state-utils.js": ["extension/state-utils.js", "text/javascript; charset=utf-8"],
   "/error-utils.js": ["extension/error-utils.js", "text/javascript; charset=utf-8"],
@@ -93,6 +96,7 @@ async function createCompanion({ dir, lanHost = null, readPort = 32100, writePor
     if (error.code !== "ENOENT") startupDiagnostic = diagnoseError(codedError("CACHE_READ_FAILED", { systemCode: error.code }), { stage: "companion_read" });
   }
   const servers = [];
+  const refreshControl = createRefreshControl({ authenticate: token => tokenMatches("Bearer " + token, config.writeToken), now });
   let writeQueue = Promise.resolve();
   const headers = {
     "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
@@ -120,10 +124,18 @@ async function createCompanion({ dir, lanHost = null, readPort = 32100, writePor
           await work;
           respond(res, 200, { ok: true });
         } else {
+          if (req.url === "/api/refresh") {
+            if (req.method !== "POST") throw codedError("METHOD_NOT_ALLOWED");
+            if (!tokenMatches(req.headers.authorization, config.viewToken)) throw codedError("ACCESS_DENIED");
+            if (req.headers.origin !== `http://${host}:${getPort()}`) throw codedError("ORIGIN_DENIED");
+            if (req.headers["content-type"]?.split(";")[0] !== "application/json") throw codedError("INVALID_SCHEMA");
+            const refresh = refreshControl.request(await readBody(req));
+            respond(res, 202, { schemaVersion: 1, instanceId, refresh, serverTime: new Date(now()).toISOString() }); return;
+          }
           if (req.method !== "GET") throw codedError("METHOD_NOT_ALLOWED");
           if (req.url === "/api/state") {
             if (!tokenMatches(req.headers.authorization, config.viewToken)) throw codedError("ACCESS_DENIED");
-            respond(res, 200, { schemaVersion: 1, instanceId, state, receivedAt, lastSeenAt, serverTime: new Date(now()).toISOString(), diagnostic: startupDiagnostic });
+            respond(res, 200, { schemaVersion: 1, instanceId, state, receivedAt, lastSeenAt, serverTime: new Date(now()).toISOString(), diagnostic: startupDiagnostic, refresh: refreshControl.view() });
           } else {
             const entry = staticFiles[req.url];
             if (!entry) { respond(res, 404, {}); return; }
@@ -133,7 +145,7 @@ async function createCompanion({ dir, lanHost = null, readPort = 32100, writePor
         }
       } catch (error) {
         const diagnostic = diagnoseError(error, { stage: "companion_request", operation: "http_request" });
-        const status = { BRIDGE_TOKEN: 401, ACCESS_DENIED: 401, ORIGIN_DENIED: 403, METHOD_NOT_ALLOWED: 405, INVALID_SCHEMA: 400, BODY_TOO_LARGE: 413, REQUEST_TIMEOUT: 408 }[diagnostic.code] || 500;
+        const status = { BRIDGE_TOKEN: 401, ACCESS_DENIED: 401, ORIGIN_DENIED: 403, METHOD_NOT_ALLOWED: 405, INVALID_SCHEMA: 400, BODY_TOO_LARGE: 413, REQUEST_TIMEOUT: 408, REFRESH_CHANNEL_UNAVAILABLE: 409, REFRESH_COOLDOWN: 429 }[diagnostic.code] || 500;
         if (!res.headersSent) respond(res, status, { ok: false, diagnostic }); else res.end();
       }
     };
@@ -141,6 +153,10 @@ async function createCompanion({ dir, lanHost = null, readPort = 32100, writePor
   async function listen(write, host, port) {
     let server;
     server = http.createServer(handler(write, host, () => server.address().port));
+    server.on("upgrade", (req, socket, head) => {
+      if (write) refreshControl.upgrade(req, socket, head, server.address().port);
+      else socket.end("HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+    });
     server.requestTimeout = 5000; server.headersTimeout = 5000;
     servers.push(server);
     try { await new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, host, resolve); }); }
@@ -148,6 +164,7 @@ async function createCompanion({ dir, lanHost = null, readPort = 32100, writePor
     return server.address().port;
   }
   async function close() {
+    await refreshControl.close();
     await writeQueue;
     await Promise.all(servers.map(server => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); })));
   }

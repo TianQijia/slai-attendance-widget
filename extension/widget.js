@@ -34,10 +34,12 @@ chrome.runtime.onMessage.addListener((message) => {
 send("get-state").then((response) => { if (response?.state) render(response.state); });
 setInterval(updateNextRefresh, 1000);
 
-function showBridge(info) {
+let bridgeViewInfo = {};
+function showBridge(update) {
+  const info = Object.assign(bridgeViewInfo, update);
   if (typeof info.enabled === "boolean") $("bridgeStatus").textContent = info.enabled ? "手机查看已启用" : "尚未启用";
-  $("bridgeReport").textContent = info.diagnostic ? diagnosticReport(info.diagnostic) : "";
-  if (info.diagnostic) $("bridgeStatus").textContent = describeDiagnostic(info.diagnostic).reason;
+  setReportText($("bridgeReport"), [info.diagnostic, info.refreshDiagnostic].filter(Boolean).map(value => diagnosticReport(value)).join("\n\n"));
+  if (info.diagnostic || info.refreshDiagnostic) $("bridgeStatus").textContent = describeDiagnostic(info.diagnostic || info.refreshDiagnostic).reason;
 }
 async function bridgeRequest(message) {
   try {
@@ -62,12 +64,7 @@ $("disableBridge").addEventListener("click", () => bridgeRequest({ type: "set-br
 $("copyBridge").addEventListener("click", async () => {
   const report = $("bridgeReport").textContent;
   if (!report) return;
-  try { await navigator.clipboard.writeText(report); $("bridgeStatus").textContent = "已复制连接排错信息"; }
-  catch {
-    const range = document.createRange(); range.selectNodeContents($("bridgeReport"));
-    window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
-    $("bridgeStatus").textContent = "自动复制未获允许，请手动复制已选中的信息。";
-  }
+  await copyReport($("bridgeReport"), $("bridgeStatus"), "已复制连接排错信息");
 });
 chrome.runtime.onMessage.addListener(message => { if (message?.type === "bridge-state") showBridge(message); });
 bridgeRequest({ type: "get-bridge" });

@@ -1,6 +1,18 @@
 (() => {
   // Only fixed text and allowlisted structural facts may reach storage or UI.
   const failures = {
+    REFRESH_CHANNEL_UNAVAILABLE: ["电脑扩展尚未连接手机刷新通道", "确认电脑 Chrome 和扩展正在运行；更新后在扩展管理页重新加载扩展，再检查手机查看设置。"],
+    REFRESH_CHANNEL_LOST: ["刷新过程中与电脑扩展的连接已断开，结果尚未确认", "重新连接查看服务，检查电脑扩展的采集状态；本次请求不会自动重新执行。"],
+    REFRESH_CHANNEL_BUSY: ["已有另一个扩展连接了手机刷新通道", "仅保留本人需要使用的那个 Chrome 扩展实例，关闭重复配对的实例后重试。"],
+    REFRESH_CHANNEL_FAILED: ["未能建立或保持本机刷新连接，直接原因尚未识别", "确认伴随服务与扩展均已更新并运行，检查手机查看设置及本机权限。"],
+    REFRESH_ACK_TIMEOUT: ["等待上限内未收到电脑扩展的刷新确认", "检查电脑扩展是否运行；先查看最新结果再决定是否重试。"],
+    REFRESH_RESULT_TIMEOUT: ["等待上限内未收到学校采集的完成结果", "查看电脑扩展的采集进度及排错信息；这不表示学校采集已经停止。"],
+    REFRESH_RESULT_UNKNOWN: ["扩展未提供可确认的学校刷新结果", "查看电脑扩展的排错信息，重新连接查看结果。"],
+    REFRESH_COOLDOWN: ["距离上一次手机刷新请求时间过短", "等待报告中的重试间隔后，再点击刷新学校数据。"],
+    REFRESH_SEND_TIMEOUT: ["手机刷新请求超过 3 秒，尚未确认是否送达", "先等待页面读取执行状态；再次点击会沿用同一请求，避免重复抓取。"],
+    REFRESH_SEND_FAILED: ["未能确认手机刷新请求是否送达，直接原因尚未识别", "检查查看服务连接，再读取执行状态或重试。"],
+    REFRESH_UNSUPPORTED: ["当前服务没有提供手机刷新入口", "更新伴随服务和 Chrome 扩展后，再使用手机刷新。"],
+    REFRESH_SERVER_RESTARTED: ["服务进程已更换，无法确认上一次手机刷新结果", "查看电脑端最新采集结果；需要再次抓取时手动点击刷新。"],
     NET_PROBE_FAILED: ["网络检测请求未能完成", "检查附带的系统错误代码；原因未知时先确认本机服务，再用另一台设备测试。"],
     NET_PROBE_TIMEOUT: ["网络检测请求超过等待上限", "确认伴随服务正在运行；超时本身不能确定是防火墙或校园网隔离。"],
     NET_HTTP_FAILED: ["检测接口返回了非预期 HTTP 状态", "根据 HTTP 状态码检查配对配置和软件版本。"],
@@ -68,7 +80,7 @@
     network_probe: "检测本机网络接口", network_inspect: "读取系统网络配置", network_report: "保存网络检测报告",
     bridge_settings: "设置本机连接", bridge_push: "扩展推送本机状态", companion_start: "启动伴随服务",
     companion_read: "读取服务缓存", companion_write: "保存服务缓存", companion_request: "处理本机请求",
-    viewer_fetch: "手机读取状态", viewer_access: "读取或保存查看权限", autostart: "设置登录后启动",
+    viewer_fetch: "手机读取状态", viewer_access: "读取或保存查看权限", remote_refresh: "手机请求学校刷新", autostart: "设置登录后启动",
     open_portal: "打开学校首页", find_attendance: "查找考勤入口",
     open_summary: "打开月度汇总", read_summary: "读取月度汇总",
     open_swipes: "打开今日明细", read_swipes: "读取明细分页",
@@ -89,7 +101,7 @@
   const systemCodes = { EACCES: "操作系统拒绝访问", EPERM: "操作系统不允许此操作", ENOSPC: "存储空间不足", EIO: "操作系统报告输入输出错误", EADDRINUSE: "地址已被占用", EADDRNOTAVAIL: "此地址当前不可用", EMFILE: "此进程已打开过多文件", ENFILE: "系统已打开过多文件", ENOENT: "所需文件或目录不存在", ECONNREFUSED: "连接被拒绝", ECONNRESET: "连接被重置", ETIMEDOUT: "连接超时", EHOSTUNREACH: "目标主机不可达", ENETUNREACH: "目标网络不可达" };
   systemCodes.EEXIST = "路径已被现有文件或目录占用";
   systemCodes.ENOTDIR = "路径中的一项不是目录";
-  const numericFields = { page: [1, 51], currentPage: [1, 10000], rowsRead: [0, 1000000], expectedTotal: [0, 1000000], actualTotal: [0, 1000000], timeoutMs: [0, 300000], httpStatus: [100, 599], port: [1, 65535] };
+  const numericFields = { page: [1, 51], currentPage: [1, 10000], rowsRead: [0, 1000000], expectedTotal: [0, 1000000], actualTotal: [0, 1000000], timeoutMs: [0, 1200000], httpStatus: [100, 599], port: [1, 65535], retryAfterSeconds: [0, 60] };
 
   function sanitizeDiagnostic(input) {
     if (!input || typeof input !== "object") return null;
@@ -156,6 +168,7 @@
     if (d.timeoutMs !== undefined) lines.push(`等待上限：${d.timeoutMs / 1000} 秒`);
     if (d.httpStatus !== undefined) lines.push(`HTTP 状态：${d.httpStatus}`);
     if (d.port !== undefined) lines.push(`服务端口：${d.port}`);
+    if (d.retryAfterSeconds !== undefined) lines.push(`重试间隔：${d.retryAfterSeconds} 秒`);
     if (status === "partial") lines.push("当前结果：历史采用学校汇总；今日仅保留上次完整结果，实时估算已暂停");
     else if (status === "auth") lines.push("当前结果：等待登录，自动刷新已暂停");
     else if (status === "error") lines.push("当前结果：本次读取未成功更新");

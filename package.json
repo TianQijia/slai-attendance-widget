@@ -8,7 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node tests/time-test.js && node tests/network-test.js && node tests/companion-test.js && node tests/viewer-test.js && node tests/run-tests.js",
+    "test": "node tests/time-test.js && node tests/network-test.js && node tests/companion-test.js && node tests/viewer-test.js && node tests/refresh-test.js && node tests/run-tests.js",
     "audit:release": "node scripts/audit.js",
     "build": "node scripts/build.js",
     "test:install": "node tests/install-test.js && node tests/packaged-test.js",
@@ -17,5 +17,8 @@
   "devDependencies": {
     "fflate": "0.8.2",
     "playwright": "1.62.1"
+  },
+  "dependencies": {
+    "ws": "8.21.3"
   }
 }

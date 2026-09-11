@@ -31,6 +31,8 @@ async function browserTests(engine, service) {
     await page.goto(link);
     await waitForText(page, "accessMessage", "已取得查看权限");
     assert.equal(new URL(page.url()).hash, "");
+    assert.equal(await page.locator("#accessCard").evaluate(el => el.open), false);
+    assert.equal(await page.locator("#connectionDetails").evaluate(el => el.open), false);
     assert.equal(await page.evaluate(() => scrollY), 0, "Initial history rendering must keep the top refresh button in view");
     assert.equal(await page.evaluate(key => localStorage.getItem(key), rememberedKey), null, "Persistence requires opt-in");
     await page.reload();
@@ -39,6 +41,7 @@ async function browserTests(engine, service) {
     await tab.goto(origin);
     await waitForText(tab, "connectionReport", "VIEW_TOKEN_MISSING");
     assert.equal(await tab.locator("#statusText").innerText(), "暂无可靠数据");
+    await tab.locator("#connectionDetails > summary").click();
     assert.doesNotMatch(await tab.locator("#connectionReport").innerText(), /HTTP 状态/);
     const refreshBox = await tab.locator("#refreshView").boundingBox();
     assert(refreshBox.y >= 0 && refreshBox.y + refreshBox.height < 120, "Refresh is visible at the top");
@@ -61,6 +64,7 @@ async function browserTests(engine, service) {
     assert.equal(await manual.evaluate(el => getComputedStyle(el).webkitUserSelect || getComputedStyle(el).userSelect), "text");
     await tab.getByRole("button", { name: "关闭手动复制" }).click();
 
+    await tab.locator("#openAccess").click();
     await tab.locator("#viewLink").fill("PRIVATE_FIXTURE");
     await tab.locator("#connectView").click();
     await waitForText(tab, "connectionReport", "VIEW_LINK_INVALID");
@@ -90,15 +94,16 @@ async function browserTests(engine, service) {
     await reopened.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     await waitForText(reopened, "viewerRefreshStatus", "已读取电脑结果");
 
-    // The top button coalesces requests, shows progress, and only reads the local cache.
+    // The reconnect button coalesces reads without requesting school collection.
+    await reopened.locator("#connectionDetails > summary").click();
+    await reopened.locator("#accessCard > summary").click();
     let release, seen;
     const blocked = new Promise(resolve => { release = resolve; });
     const started = new Promise(resolve => { seen = resolve; });
     let count = 0;
     await reopened.route("**/api/state", async route => { count++; seen(); await blocked; await route.continue(); });
-    await reopened.locator("#refreshView").click();
+    await reopened.locator("#reconnect").click();
     await started;
-    assert.equal(await reopened.locator("#refreshView").isDisabled(), true);
     assert.equal(await reopened.locator("#reconnect").isDisabled(), true);
     assert.match(await reopened.locator("#viewerRefreshStatus").innerText(), /正在读取/);
     const coalesced = reopened.evaluate(() => fetchState());
@@ -107,12 +112,23 @@ async function browserTests(engine, service) {
     assert.equal(count, 1);
     await reopened.unroute("**/api/state");
 
+    const heldReads = [];
+    await reopened.route("**/api/state", route => { heldReads.push(route); });
+    await reopened.locator("#reconnect").click();
+    await waitForText(reopened, "connectionReport", "VIEW_TIMEOUT");
+    assert.match(await reopened.locator("#connectionReport").innerText(), /等待上限：3 秒/);
+    await reopened.unroute("**/api/state");
+    for (const route of heldReads) await route.abort().catch(() => {});
+    await reopened.locator("#reconnect").click();
+    await waitForText(reopened, "viewerRefreshStatus", "已读取电脑结果");
+    assert.doesNotMatch(await reopened.locator("#connectionReport").innerText(), /VIEW_TIMEOUT/);
+
     // A response that began before logout must not restore access or attendance.
     let releaseOld, seenOld;
     const oldBlocked = new Promise(resolve => { releaseOld = resolve; });
     const oldStarted = new Promise(resolve => { seenOld = resolve; });
     await reopened.route("**/api/state", async route => { seenOld(); await oldBlocked; await route.continue(); });
-    await reopened.locator("#refreshView").click(); await oldStarted;
+    await reopened.locator("#reconnect").click(); await oldStarted;
     await reopened.locator("#forgetView").click();
     releaseOld(); await reopened.evaluate(async () => { if (activeRequest) await activeRequest; });
     assert.equal(await reopened.locator("#todayDuration").innerText(), "--:--:--");
@@ -141,12 +157,13 @@ async function browserTests(engine, service) {
     await denied.goto(link);
     await waitForText(denied, "accessMessage", "已取得查看权限");
     await waitForText(denied, "connectionReport", "VIEW_STORAGE_UNAVAILABLE");
+    await denied.locator("#connectionDetails > summary").click();
     const report = await denied.locator("#connectionReport").innerText();
     assert.match(report, /读取或保存查看权限/); assert.match(report, /SecurityError/);
     assert(!report.includes(service.config.viewToken)); assert(!report.includes("PRIVATE_FIXTURE"));
     assert.equal(new URL(denied.url()).hash, "");
     await denied.evaluate(() => { window.blockStorage = false; });
-    await denied.locator("#refreshView").click();
+    await denied.locator("#reconnect").click();
     await denied.waitForFunction(() => !document.querySelector("#connectionReport").textContent.includes("VIEW_STORAGE_UNAVAILABLE"));
     // Validation must still run if reading/writing storage throws.
     const malformed = await deniedContext.newPage();
@@ -159,7 +176,7 @@ async function browserTests(engine, service) {
     assert.deepEqual(foreign, []);
     assert(requests.every(request => request.method === "GET"), "The phone must never write state or trigger collection");
     assert.deepEqual(errors, []);
-    console.log(`Passed (${engine.name()}): tab reload/reopen, opt-in persistence, same-page link recovery, missing/rejected/foreign/malformed links, blocked storage/recovery/privacy, HTTP manual-copy selection across refresh, top refresh coalescing, logout race and read-only requests.`);
+    console.log(`Passed (${engine.name()}): tab reload/reopen, opt-in persistence, same-page link recovery, missing/rejected/foreign/malformed links, blocked storage/recovery/privacy, HTTP manual-copy selection across refresh, reconnect coalescing, logout race and read-only requests.`);
   } finally { await browser.close(); }
 }
 async function run() {
@@ -187,6 +204,7 @@ async function run() {
         let page = await context.newPage();
         await page.goto(`http://127.0.0.1:${service.readPort}/#token=${service.config.viewToken}`);
         await waitForText(page, "accessMessage", "已取得查看权限");
+        await page.locator("#accessCard > summary").click();
         await page.locator("#rememberView").check();
         await context.close(); context = await launch();
         page = await context.newPage();

@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const root = path.resolve(__dirname, "..");
 const list = JSON.parse(fs.readFileSync(path.join(root, "release-files.json"), "utf8"));
 
@@ -32,6 +33,12 @@ function audit() {
   for (const entries of [list.companion, ...Object.values(list.companionPlatforms)]) {
     assert.equal(new Set(entries).size, entries.length);
     for (const name of entries) assert(list.source.includes(name));
+  }
+  assert.equal(require("../node_modules/ws/package.json").version, require("../package.json").dependencies.ws);
+  for (const [name, sha256] of Object.entries(list.companionDependencies)) {
+    assert(/^node_modules\/ws\/(?:lib\/)?[A-Za-z0-9_.-]+$/.test(name), "Unexpected bundled dependency path");
+    assert(!fs.lstatSync(path.join(root, name)).isSymbolicLink());
+    assert.equal(crypto.createHash("sha256").update(fs.readFileSync(path.join(root, name))).digest("hex"), sha256, `Bundled dependency differs from its allowlisted SHA-256: ${name}`);
   }
   for (const name of list.source.filter((file) => file.startsWith("extension/"))) {
     const content = fs.readFileSync(path.join(root, name), "utf8");

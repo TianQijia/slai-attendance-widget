@@ -1,4 +1,4 @@
-importScripts("time-utils.js", "error-utils.js", "state-utils.js", "bridge-utils.js");
+importScripts("time-utils.js", "error-utils.js", "state-utils.js", "refresh-utils.js", "bridge-utils.js", "remote-refresh.js");
 const { sanitizeState } = globalThis.__slaiState;
 const { diagnoseError } = globalThis.__slaiErrors;
 const PORTAL_URL = "https://stu.slai.edu.cn/";
@@ -40,7 +40,7 @@ async function getState() {
 async function migrateStorage() {
   await chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
   const stored = await chrome.storage.local.get(null);
-  const obsolete = Object.keys(stored).filter((key) => ![STATE_KEY, "widgetWindowId", "bridgeSettings", "bridgeDiagnostic"].includes(key));
+  const obsolete = Object.keys(stored).filter((key) => ![STATE_KEY, "widgetWindowId", "bridgeSettings", "bridgeDiagnostic", "refreshDiagnostic"].includes(key));
   if (stored.widgetWindowId !== undefined && !Number.isInteger(stored.widgetWindowId)) obsolete.push("widgetWindowId");
   if (obsolete.length) await chrome.storage.local.remove(obsolete);
   if (stored[STATE_KEY]) await chrome.storage.local.set({ [STATE_KEY]: sanitizeState(stored[STATE_KEY]) });
@@ -394,7 +394,7 @@ chrome.runtime.onStartup.addListener(async () => {
 
 chrome.action.onClicked.addListener(() => openWidget());
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === BRIDGE_ALARM) { queueBridgePush(await getState()); return; }
+  if (alarm.name === BRIDGE_ALARM) { ensureRemoteRefresh(); queueBridgePush(await getState()); return; }
   if (alarm.name === REFRESH_ALARM && (await getState()).status !== "auth") refreshAttendance();
 });
 

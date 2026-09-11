@@ -13,23 +13,10 @@
           <p class="eyebrow" id="todayLabel">今日考勤</p>
           <h1>在校时间</h1>
         </div>
-        <button id="refreshView" type="button">刷新</button>
+        <button id="refreshView" type="button">刷新学校数据</button>
       </header>
-      <p class="source-note" id="viewerRefreshStatus" role="status">尚未读取电脑结果</p>
-
-      <section class="diagnostic-card" id="accessCard" aria-label="查看权限">
-        <strong>私人局域网查看</strong>
-        <p id="accessMessage" role="status">正在读取查看权限…</p>
-        <form id="accessForm">
-          <label for="viewLink">手机查看链接</label>
-          <input id="viewLink" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="2048" placeholder="粘贴电脑连接信息中的完整查看链接">
-          <button id="connectView" type="submit">连接查看服务</button>
-        </form>
-        <label class="remember-view"><input id="rememberView" type="checkbox">在此浏览器记住查看权限（仅自己的设备）</label>
-        <p id="accessStorageStatus" role="status"></p>
-        <button id="changeViewLink" class="hidden" type="button">更换查看链接</button>
-        <button id="forgetView" class="hidden" type="button">退出并清除保存的权限</button>
-      </section>
+      <p class="source-note" id="schoolRefreshStatus" role="status">点击后通知电脑扩展抓取学校数据。</p>
+      <p class="source-note hidden" id="accessNotice">需要连接查看服务。<button id="openAccess" type="button">连接设置</button></p>
 
       <section class="today-card">
         <div class="progress-ring" id="progressRing">
@@ -58,19 +45,6 @@
 
       <section id="authCard" class="hidden"></section>
 
-      <section class="diagnostic-card hidden" id="diagnosticCard" aria-label="排错信息">
-        <div class="diagnostic-heading">
-          <strong>排错信息</strong>
-          <button id="copyDiagnostic" type="button">复制排错信息</button>
-        </div>
-        <p id="diagnosticAction"></p>
-        <details id="diagnosticDetails">
-          <summary>查看错误代码和现场细节</summary>
-          <pre id="diagnosticReport"></pre>
-        </details>
-        <span class="copy-status" id="copyStatus" role="status"></span>
-      </section>
-
       <section class="month-section">
         <div class="section-heading">
           <div>
@@ -86,8 +60,35 @@
         </div>
       </section>
 
-      <section class="diagnostic-card">
-        <strong>连接与排错</strong>
+      <details class="diagnostic-card" id="accessCard" aria-label="查看权限">
+        <summary>私人局域网查看</summary>
+        <p id="accessMessage" role="status">正在读取查看权限…</p>
+        <form id="accessForm">
+          <label for="viewLink">手机查看链接</label>
+          <input id="viewLink" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="2048" placeholder="粘贴电脑连接信息中的完整查看链接">
+          <button id="connectView" type="submit">连接查看服务</button>
+        </form>
+        <label class="remember-view"><input id="rememberView" type="checkbox">在此浏览器记住查看权限（仅自己的设备）</label>
+        <p id="accessStorageStatus" role="status"></p>
+        <button id="changeViewLink" class="hidden" type="button">更换查看链接</button>
+        <button id="forgetView" class="hidden" type="button">退出并清除保存的权限</button>
+      </details>
+
+      <details class="diagnostic-card" id="connectionDetails">
+        <summary>连接与排错</summary>
+      <section class="diagnostic-card hidden" id="diagnosticCard" aria-label="排错信息">
+        <div class="diagnostic-heading">
+          <strong>排错信息</strong>
+          <button id="copyDiagnostic" type="button">复制排错信息</button>
+        </div>
+        <p id="diagnosticAction"></p>
+        <details id="diagnosticDetails">
+          <summary>查看错误代码和现场细节</summary>
+          <pre id="diagnosticReport"></pre>
+        </details>
+        <span class="copy-status" id="copyStatus" role="status"></span>
+      </section>
+
         <p id="connectionStatus" role="status">正在连接…</p>
         <button id="reconnect" type="button">重新连接查看服务</button>
         <pre id="connectionReport"></pre>
@@ -101,7 +102,8 @@
           <pre id="networkReport"></pre>
           <p id="networkCopyStatus" role="status"></p>
         </details>
-      </section>
+      </details>
+      <p class="source-note" id="viewerRefreshStatus" role="status">尚未读取电脑结果</p>
       <footer>
         <span id="summaryUpdatedAt">学校汇总尚未更新</span>
         <span id="updatedAt">尚未更新</span>
@@ -112,8 +114,10 @@
     <script src="time-utils.js"></script>
     <script src="state-utils.js"></script>
     <script src="report-utils.js"></script>
+    <script src="refresh-utils.js"></script>
     <script src="view.js"></script>
     <script src="network-report.js"></script>
     <script src="viewer.js"></script>
+    <script src="viewer-refresh.js"></script>
   </body>
 </html>

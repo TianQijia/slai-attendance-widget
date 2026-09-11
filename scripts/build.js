@@ -62,8 +62,8 @@ async function main() {
   const targets = process.env.SLAI_BUILD_TARGET ? [process.env.SLAI_BUILD_TARGET] : Object.keys(list.companionPlatforms);
   for (const platform of targets) {
     assert(Object.hasOwn(list.companionPlatforms, platform), "Unknown build target");
-    const names = [...list.companion, ...list.companionPlatforms[platform]];
-    const entries = Object.fromEntries(names.map(name => { assert(list.source.includes(name)); return [name, fs.readFileSync(path.join(root, name))]; }));
+    const names = [...list.companion, ...list.companionPlatforms[platform], ...Object.keys(list.companionDependencies)];
+    const entries = Object.fromEntries(names.map(name => { assert(list.source.includes(name) || Object.hasOwn(list.companionDependencies, name)); return [name, fs.readFileSync(path.join(root, name))]; }));
     Object.assign(entries, await runtimeFiles(platform));
     packageZip(`slai-attendance-companion-v${version}-${platform}.zip`, entries);
   }

@@ -200,6 +200,8 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .manual-copy p { font-size: 13px; line-height: 1.6; color: var(--muted); }
 .manual-copy button { padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; color: #f3faf7; background: #263b36; }
 #refreshView { min-height: 44px; padding: 8px 16px; border: 1px solid var(--border); border-radius: 10px; color: #f3faf7; background: #263b36; }
+#openAccess { padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px; color: #f3faf7; background: #263b36; }
+#schoolRefreshStatus { min-height: 18px; }
 button:disabled { cursor: wait; opacity: .65; }
 button { cursor: pointer; }
 .diagnostic-card button { padding: 7px 9px; color: #f3faf7; background: #263b36; border: 1px solid var(--border); border-radius: 8px; }

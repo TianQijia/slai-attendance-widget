@@ -6,6 +6,7 @@ const { promisify } = require("node:util");
 const execFile = promisify(require("node:child_process").execFile);
 const { unzipSync } = require("fflate");
 const { chromium } = require("playwright");
+const { swipeData, swipeHtml } = require("./swipe-fixture");
 const { lanAddresses } = require("../companion/cli");
 const root = path.resolve(__dirname, "..");
 const version = require("../package.json").version;
@@ -31,7 +32,8 @@ async function unpack(file, dir, names) {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "slai-package-test-"));
   const bundle = path.join(temp, "bundle with spaces"), extension = path.join(temp, "extension"), dir = path.join(temp, "private data");
   const runtimeName = target === "win-x64" ? "runtime/node.exe" : "runtime/node";
-  let context, config, running = false;
+  let context, config, running = false, schoolMode = "auth", schoolDate;
+  const visitedPages = [];
   const host = lanAddresses()[0];
   const invoke = command => {
     const script = path.join(bundle, "companion", `${command}.${target === "win-x64" ? "cmd" : "command"}`);
@@ -45,7 +47,7 @@ async function unpack(file, dir, names) {
     assert(response.ok); return response.json();
   };
   try {
-    await unpack(path.join(root, "dist", `slai-attendance-companion-v${version}-${target}.zip`), bundle, [...list.companion, ...list.companionPlatforms[target], runtimeName, "runtime/LICENSE"]);
+    await unpack(path.join(root, "dist", `slai-attendance-companion-v${version}-${target}.zip`), bundle, [...list.companion, ...list.companionPlatforms[target], ...Object.keys(list.companionDependencies), runtimeName, "runtime/LICENSE"]);
     await unpack(path.join(root, "dist", `slai-attendance-widget-v${version}.zip`), extension, list.archive);
     const runtime = await execFile(path.join(bundle, runtimeName), ["--version"], { env: { ...process.env, PATH: "" } });
     assert.equal(runtime.stdout.trim(), "v22.23.2");
@@ -59,7 +61,20 @@ async function unpack(file, dir, names) {
         ignoreDefaultArgs: ["--disable-extensions"], args: ["--enable-unsafe-extension-debugging",
           "--host-resolver-rules=MAP stu.slai.edu.cn 127.0.0.1, MAP sts.slai.edu.cn 127.0.0.1"]
       });
-      await next.route("https://stu.slai.edu.cn/**", route => route.fulfill({ status: 302, headers: { location: "https://sts.slai.edu.cn/signin" }, body: "" }));
+      await next.route("https://stu.slai.edu.cn/**", async route => {
+        if (schoolMode === "auth") return route.fulfill({ status: 302, headers: { location: "https://sts.slai.edu.cn/signin" }, body: "" });
+        const url = new URL(route.request().url());
+        if (url.pathname.endsWith("/swipe/attendList")) return route.fulfill({ contentType: "text/html; charset=utf-8", body:
+          `<h1>月度考勤统计汇总（虚构测试）</h1><input value="${schoolDate.slice(0, 7)}"><p>学号: 000000000</p><table><tr><td>${schoolDate}</td><td>周一</td><td>工作日</td><td>02:00:00</td><td>否</td></tr></table>` });
+        if (url.pathname.endsWith("/swipe/list")) {
+          const number = Number(url.searchParams.get("pageNo") || 1);
+          visitedPages.push(number);
+          if (route.request().resourceType() === "document") return route.fulfill({ contentType: "text/html; charset=utf-8", body: swipeHtml(schoolDate) });
+          await new Promise(resolve => setTimeout(resolve, 300));
+          return route.fulfill({ json: swipeData(number) });
+        }
+        return route.fulfill({ contentType: "text/html; charset=utf-8", body: '<a href="/a/edu/acm/swipe/attendList">学生考勤统计查询</a>' });
+      });
       await next.route("https://sts.slai.edu.cn/**", route => route.fulfill({ body: "Synthetic school login", contentType: "text/html" }));
       return next;
     };
@@ -133,22 +148,58 @@ async function unpack(file, dir, names) {
     const mobile = await context.newPage();
     await mobile.goto(`http://127.0.0.1:32100/#token=${config.viewToken}`);
     await mobile.waitForFunction(() => document.querySelector("#todayDuration").textContent === "00:00:00");
-    await mobile.locator("#refreshView").click();
+    await mobile.locator("#connectionDetails > summary").click();
+    await mobile.locator("#reconnect").click();
     await mobile.waitForFunction(() => document.querySelector("#viewerRefreshStatus").textContent.includes("已读取电脑结果"));
+    await mobile.locator("#accessCard > summary").click();
     await mobile.locator("#rememberView").check();
     const reopenedMobile = await context.newPage();
     await reopenedMobile.goto("http://127.0.0.1:32100/");
     await reopenedMobile.waitForFunction(() => document.querySelector("#accessMessage").textContent.includes("已取得查看权限"));
     await reopenedMobile.evaluate(() => Object.defineProperty(navigator, "clipboard", { value: undefined }));
+    await reopenedMobile.locator("#connectionDetails > summary").click();
     await reopenedMobile.locator("#networkDetails summary").click();
     await reopenedMobile.locator("#checkNetwork").click();
     await reopenedMobile.locator("#copyNetwork").click();
     const manualReport = await reopenedMobile.getByRole("textbox", { name: "可手动复制的报告" }).inputValue();
     assert.match(manualReport, /NET_BROWSER_OK/);
     assert(!manualReport.includes(config.viewToken) && !manualReport.includes(config.writeToken));
+    await reopenedMobile.getByRole("button", { name: "关闭手动复制" }).click();
+    schoolDate = await worker.evaluate(() => localDateKey());
+    schoolMode = "normal";
+    // Chrome can start an extension-created tab's first request before
+    // Playwright attaches its school-response routes. Reuse a registered blank
+    // page for this one navigation; collector, control and bridge code stay
+    // untouched, and tabs.update/scripting/pagination run in real Chrome.
+    const schoolFixture = await context.newPage();
+    await schoolFixture.goto("about:blank#slai-packaged-school-fixture");
+    await worker.evaluate(async () => {
+      const tab = (await chrome.tabs.query({})).find(tab => tab.url === "about:blank#slai-packaged-school-fixture");
+      if (!tab) throw new Error("Synthetic school page was not registered");
+      const create = chrome.tabs.create;
+      chrome.tabs.create = async options => {
+        chrome.tabs.create = create;
+        return chrome.tabs.update(tab.id, { url: options.url, active: options.active });
+      };
+    });
+    await until(async () => (await read()).refresh.available);
+    await reopenedMobile.locator("#refreshView").click();
+    try { await reopenedMobile.waitForFunction(() => document.querySelector("#schoolRefreshStatus").textContent.includes("学校数据已更新"), null, { timeout: 35000 }); }
+    catch (error) {
+      const result = await read();
+      console.log("Synthetic phone refresh:", { status: result.refresh.request?.status, diagnostic: result.refresh.request?.diagnostic, schoolStatus: result.state?.status, schoolDiagnostic: result.state?.diagnostic, visitedPages });
+      throw error;
+    }
+    const refreshed = await read();
+    assert.equal(refreshed.refresh.request.status, "succeeded");
+    assert.equal(refreshed.state.status, "ok");
+    assert.equal(refreshed.state.todaySwipes.length, 6);
+    assert.notEqual(refreshed.state.updatedAt, complete.updatedAt);
+    assert.deepEqual(visitedPages, [1, 2, 3], "The phone button must make the shipped extension collect all fixture pages through real Chrome scripting");
+    assert(!JSON.stringify(refreshed).includes("000000000"));
     assert.equal(await mobile.locator("#login").count(), 0);
     assert(!JSON.stringify(await fs.readFile(path.join(dir, "attendance.json"), "utf8")).includes("PRIVATE_FIXTURE"));
-    console.log(`Final ZIP smoke test passed (${target}): bundled Node with empty PATH, paths with spaces, extension bridge with declared localhost pre-authorized only in the temporary consent fixture and real localhost fetch, private read/write isolation, source failure, restart recovery, and phone page. Only synthetic data was used.`);
+    console.log(`Final ZIP smoke test passed (${target}): bundled Node with empty PATH, paths with spaces, extension bridge with declared localhost pre-authorized only in the temporary consent fixture, private read/write isolation, source failure, restart recovery, and phone-triggered real extension collection of all 3 synthetic school pages. Only synthetic data was used.`);
   } finally {
     if (context) await context.close();
     if (running) { await invoke("stop").catch(() => {}); await new Promise(resolve => setTimeout(resolve, 300)); }

@@ -6,8 +6,8 @@ let bridgeGeneration = 0;
 
 async function getBridgeInfo() {
   try {
-    const stored = await chrome.storage.local.get(["bridgeSettings", "bridgeDiagnostic"]);
-    return { enabled: stored.bridgeSettings?.enabled === true, diagnostic: globalThis.__slaiErrors.sanitizeDiagnostic(stored.bridgeDiagnostic) };
+    const stored = await chrome.storage.local.get(["bridgeSettings", "bridgeDiagnostic", "refreshDiagnostic"]);
+    return { enabled: stored.bridgeSettings?.enabled === true, diagnostic: globalThis.__slaiErrors.sanitizeDiagnostic(stored.bridgeDiagnostic), refreshDiagnostic: globalThis.__slaiErrors.sanitizeDiagnostic(stored.refreshDiagnostic) };
   } catch { throw globalThis.__slaiErrors.codedError("BRIDGE_SETTINGS", { stage: "bridge_settings" }); }
 }
 async function publishBridgeDiagnostic(diagnostic) {
@@ -65,6 +65,7 @@ async function initializeBridge() {
     if (settings?.enabled === true && /^[A-Za-z0-9_-]{43}$/.test(settings.token)) {
       await chrome.storage.local.set({ bridgeSettings: { enabled: true, token: settings.token } });
       await chrome.alarms.create(BRIDGE_ALARM, { periodInMinutes: 1 });
+      if (typeof ensureRemoteRefresh === "function") ensureRemoteRefresh();
       queueBridgePush(await getState());
     } else {
       await chrome.storage.local.remove("bridgeSettings");
@@ -77,15 +78,18 @@ async function configureBridge({ enabled, token }) {
   if (enabled && !await chrome.permissions.contains({ origins: [BRIDGE_ORIGIN] })) throw globalThis.__slaiErrors.codedError("BRIDGE_PERMISSION", { stage: "bridge_settings" });
   try {
     bridgeGeneration++;
+    if (typeof stopRemoteRefresh === "function") stopRemoteRefresh();
     bridgePending = null;
     if (enabled) {
       await chrome.storage.local.set({ bridgeSettings: { enabled: true, token } });
       await chrome.alarms.create(BRIDGE_ALARM, { periodInMinutes: 1 });
       await queueBridgePush(await getState());
+      if (typeof ensureRemoteRefresh === "function") await ensureRemoteRefresh();
     } else {
       await chrome.storage.local.remove("bridgeSettings");
       await chrome.alarms.clear(BRIDGE_ALARM);
       await publishBridgeDiagnostic(null);
+      if (typeof publishRefreshDiagnostic === "function") await publishRefreshDiagnostic(null);
     }
     return { ok: true, ...await getBridgeInfo() };
   } catch (error) { throw error.code ? error : globalThis.__slaiErrors.codedError("BRIDGE_SETTINGS", { stage: "bridge_settings" }); }
