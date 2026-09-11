@@ -1,4 +1,4 @@
-importScripts("error-utils.js", "state-utils.js");
+importScripts("time-utils.js", "error-utils.js", "state-utils.js", "bridge-utils.js");
 const { sanitizeState } = globalThis.__slaiState;
 const { diagnoseError } = globalThis.__slaiErrors;
 const PORTAL_URL = "https://stu.slai.edu.cn/";
@@ -40,7 +40,7 @@ async function getState() {
 async function migrateStorage() {
   await chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
   const stored = await chrome.storage.local.get(null);
-  const obsolete = Object.keys(stored).filter((key) => ![STATE_KEY, "widgetWindowId"].includes(key));
+  const obsolete = Object.keys(stored).filter((key) => ![STATE_KEY, "widgetWindowId", "bridgeSettings", "bridgeDiagnostic"].includes(key));
   if (stored.widgetWindowId !== undefined && !Number.isInteger(stored.widgetWindowId)) obsolete.push("widgetWindowId");
   if (obsolete.length) await chrome.storage.local.remove(obsolete);
   if (stored[STATE_KEY]) await chrome.storage.local.set({ [STATE_KEY]: sanitizeState(stored[STATE_KEY]) });
@@ -64,6 +64,7 @@ async function saveState(state) {
     throw readerError("STORAGE_WRITE_FAILED", "无法保存考勤结果", { stage: "save_state", operation: "storage_set" });
   }
   chrome.runtime.sendMessage({ type: "attendance-state", state: next }).catch(() => {});
+  queueBridgePush(next);
   return next;
 }
 
@@ -85,12 +86,7 @@ function isPortalUrl(url) {
   }
 }
 
-function localDateKey(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+const { localDateKey } = globalThis.__slaiTime;
 
 function waitForTab(tabId, expectedUrlPart = "slai.edu.cn", timeoutMs = 30000) {
   return new Promise((resolve, reject) => {
@@ -275,20 +271,20 @@ async function scrapeAttendance({ sourceTabId = null } = {}) {
     const data = await waitForReader(
       tab.id,
       "extractAttendance",
-      (value) => Array.isArray(value?.days) && value.days.length > 0
+      (value) => value?.ready === true
     );
-    if (!data || !Array.isArray(data.days) || data.days.length === 0) {
+    if (!data || data.ready !== true || !Array.isArray(data.days)) {
       throw readerError("SUMMARY_MISSING", "考勤页面已打开，但没有识别到每日数据", { timeoutMs: 10000 });
     }
 
-    const { studentNumber, ...summary } = data;
+    const { studentNumber, ready, ...summary } = data;
     attendanceData = summary;
     summaryUpdatedAt = new Date().toISOString();
     if (!studentNumber) throw readerError("STUDENT_NUMBER_MISSING", "缺少查询明细所需的学号");
     stage = "open_swipes";
     let todaySwipes = [];
+    const queryDate = localDateKey();
     if (studentNumber) {
-      const queryDate = localDateKey();
       const recordsUrl = attendanceUrl.replace(
         /\/edu\/acm\/swipe\/attendList(?:[?#].*)?$/,
         `/edu/acm/swipe/list?userNo=${encodeURIComponent(studentNumber)}&swipeDate=${queryDate}`
@@ -304,14 +300,17 @@ async function scrapeAttendance({ sourceTabId = null } = {}) {
     }
 
     stage = "save_state";
+    const completedAt = new Date().toISOString();
     await saveState({
+      schemaVersion: 4,
+      lastCompleteToday: { date: queryDate, swipes: todaySwipes, updatedAt: completedAt },
       status: "ok",
       message: "考勤已更新",
       requiredSeconds: REQUIRED_SECONDS,
       ...attendanceData,
       todaySwipes,
       summaryUpdatedAt,
-      updatedAt: new Date().toISOString()
+      updatedAt: completedAt
     });
   } catch (error) {
     const diagnostic = diagnoseError(error, { stage });
@@ -379,6 +378,7 @@ async function openLogin() {
 
 chrome.runtime.onInstalled.addListener(async () => {
   await migrateStorage();
+  await initializeBridge();
   await chrome.alarms.create(REFRESH_ALARM, { periodInMinutes: REFRESH_MINUTES });
   await openWidget();
   await refreshAttendance();
@@ -386,6 +386,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 
 chrome.runtime.onStartup.addListener(async () => {
   await migrateStorage();
+  await initializeBridge();
   await chrome.alarms.create(REFRESH_ALARM, { periodInMinutes: REFRESH_MINUTES });
   await openWidget();
   await refreshAttendance();
@@ -393,6 +394,7 @@ chrome.runtime.onStartup.addListener(async () => {
 
 chrome.action.onClicked.addListener(() => openWidget());
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === BRIDGE_ALARM) { queueBridgePush(await getState()); return; }
   if (alarm.name === REFRESH_ALARM && (await getState()).status !== "auth") refreshAttendance();
 });
 
@@ -415,6 +417,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }));
     return true;
   };
+  if (message?.type === "get-bridge") return respond(getBridgeInfo, "configure_bridge");
+  if (message?.type === "set-bridge") return respond(() => configureBridge(message), "configure_bridge");
   if (message?.type === "get-state") {
     return respond(async () => ({ ok: true, state: await getState() }), "get_state");
   }

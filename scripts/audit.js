@@ -27,7 +27,12 @@ function audit() {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "extension/manifest.json"), "utf8"));
   assert.equal(manifest.version, require("../package.json").version);
   assert.deepEqual(manifest.host_permissions, ["https://stu.slai.edu.cn/*", "https://sts.slai.edu.cn/*"]);
+  assert.deepEqual(manifest.optional_host_permissions, ["http://127.0.0.1/*"]);
   assert(!manifest.permissions.includes("cookies"));
+  for (const entries of [list.companion, ...Object.values(list.companionPlatforms)]) {
+    assert.equal(new Set(entries).size, entries.length);
+    for (const name of entries) assert(list.source.includes(name));
+  }
   for (const name of list.source.filter((file) => file.startsWith("extension/"))) {
     const content = fs.readFileSync(path.join(root, name), "utf8");
     assert(!/document\.cookie|chrome\.cookies|storage\.sync/.test(content), `Unexpected credential/sync API in ${name}`);

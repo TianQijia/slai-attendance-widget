@@ -13,10 +13,6 @@
           <p class="eyebrow" id="todayLabel">今日考勤</p>
           <h1>在校时间</h1>
         </div>
-        <div class="top-actions">
-          <button class="icon-button" id="openPortal" title="打开学校系统" aria-label="打开学校系统">↗</button>
-          <button class="icon-button" id="refresh" title="立即刷新" aria-label="立即刷新">↻</button>
-        </div>
       </header>
 
       <section class="today-card">
@@ -44,13 +40,7 @@
 
       <p class="source-note" id="dataSource">暂无可靠数据</p>
 
-      <section class="auth-card hidden" id="authCard">
-        <div>
-          <strong>需要重新登录</strong>
-          <p>请使用自己的学校账号登录。小组件不会读取或保存密码。</p>
-        </div>
-        <button id="login">去登录</button>
-      </section>
+      <section id="authCard" class="hidden"></section>
 
       <section class="diagnostic-card hidden" id="diagnosticCard" aria-label="排错信息">
         <div class="diagnostic-heading">
@@ -80,17 +70,13 @@
         </div>
       </section>
 
-      <details class="diagnostic-card" id="bridgeSettings">
-        <summary>手机查看 · 本机连接</summary>
-        <p>先运行伴随服务，再粘贴本机配对码。手机查看只接收脱敏考勤。</p>
-        <label for="bridgeToken">本机配对码</label>
-        <input id="bridgeToken" type="password" autocomplete="off" spellcheck="false">
-        <button id="enableBridge" type="button">启用并连接</button>
-        <button id="disableBridge" type="button">关闭连接</button>
-        <p id="bridgeStatus" role="status">尚未启用</p>
-        <pre id="bridgeReport"></pre>
-        <button id="copyBridge" type="button">复制连接排错信息</button>
-      </details>
+      <section class="diagnostic-card">
+        <strong>私人局域网查看</strong>
+        <p id="connectionStatus" role="status">正在连接…</p>
+        <button id="reconnect" type="button">重新连接查看服务</button>
+        <pre id="connectionReport"></pre>
+        <button id="copyConnection" type="button">复制连接排错信息</button>
+      </section>
       <footer>
         <span id="summaryUpdatedAt">学校汇总尚未更新</span>
         <span id="updatedAt">尚未更新</span>
@@ -101,6 +87,6 @@
     <script src="time-utils.js"></script>
     <script src="state-utils.js"></script>
     <script src="view.js"></script>
-    <script src="widget.js"></script>
+    <script src="viewer.js"></script>
   </body>
 </html>

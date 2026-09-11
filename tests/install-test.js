@@ -77,6 +77,15 @@ const root = path.resolve(__dirname, "..");
     const version = await worker.evaluate(() => chrome.runtime.getManifest().version);
     assert.equal(version, require("../package.json").version);
 
+    await worker.evaluate(() => {
+      const NativeDate = Date;
+      const offset = new NativeDate("2030-04-08T12:00:00+08:00").getTime() - NativeDate.now();
+      globalThis.Date = class extends NativeDate {
+        constructor(...args) { super(...(args.length ? args : [NativeDate.now() + offset])); }
+        static now() { return NativeDate.now() + offset; }
+      };
+    });
+    await page.clock.install({ time: new Date("2030-04-08T12:00:00+08:00") });
     mode = "normal";
     testDate = await worker.evaluate(() => localDateKey());
     await worker.evaluate(() => saveState({ status: "loading", days: [] }));
@@ -112,7 +121,7 @@ const root = path.resolve(__dirname, "..");
     assert.deepEqual(partial.todaySwipes, []);
     assert.deepEqual(visitedPages, [1, 2]);
     await page.waitForFunction(() => document.querySelector("#statusText").textContent.includes("学校汇总"));
-    assert.equal(await page.locator("#todayDuration").innerText(), "02:00:00");
+    assert.equal(await page.locator("#todayDuration").innerText(), "03:00:00");
     assert.match(await page.locator("#updatedAt").innerText(), /汇总更新于/);
     await page.locator("#diagnosticDetails summary").click();
     assert.match(await page.locator("#diagnosticReport").innerText(), /目标页：第 2 页/);

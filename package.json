@@ -1,15 +1,18 @@
 {
   "name": "slai-attendance-widget",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "private": true,
   "description": "SLAI campus attendance Chrome extension",
   "license": "MIT",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "test": "node tests/run-tests.js",
+    "test": "node tests/time-test.js && node tests/companion-test.js && node tests/run-tests.js",
     "audit:release": "node scripts/audit.js",
     "build": "node scripts/build.js",
-    "test:install": "node tests/install-test.js"
+    "test:install": "node tests/install-test.js && node tests/packaged-test.js",
+    "start:companion": "node companion/cli.js start"
   },
   "devDependencies": {
     "fflate": "0.8.2",

@@ -78,7 +78,11 @@
 
     const pageText = clean(document.body?.innerText);
     const studentNumber = pageText.match(/学号[：:]?\s*(\d{6,})/)?.[1] || "";
+    // An explicitly empty, loaded monthly table is valid at the start of a month.
+    const busy = Array.from(document.querySelectorAll(".layui-table-loading, [aria-busy=\"true\"]")).some(element => getComputedStyle(element).display !== "none");
+    const emptyReady = !busy && !!month && !!document.querySelector("table") && pageText.includes("月度考勤统计汇总") && /暂无数据|暂无记录|无记录|无数据/.test(pageText);
     return {
+      ready: days.length > 0 || emptyReady,
       month,
       days,
       studentNumber

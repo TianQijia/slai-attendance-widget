@@ -52,7 +52,7 @@ function testTimeAndPrivacy() {
   const partial = sanitizeState({ ...fixtureState, status: "partial", errorCode: "SWIPE_TIMEOUT" });
   assert.deepEqual(partial.todaySwipes, []);
   assert.match(partial.message, /超时.*学校汇总/);
-  assert.equal(attendanceSeconds({ ...fixtureState, status: "partial" }, instant("12:00:00")).seconds, 7200);
+  assert.equal(attendanceSeconds({ ...sanitizeState(fixtureState), status: "partial" }, instant("12:00:00")).seconds, 10800);
   const diagnostic = diagnoseError(Object.assign(new TypeError("PRIVATE_FIXTURE https://example.invalid/session"), {
     code: "SWIPE_INCOMPLETE", details: { stage: "read_swipes", page: 2, rowsRead: 10, expectedTotal: 23,
       sourceUrl: "PRIVATE_FIXTURE", studentNumber: "000000000", message: "PRIVATE_FIXTURE", readerMethod: "PRIVATE_FIXTURE" }
@@ -134,7 +134,7 @@ async function testBackground() {
   context.chrome.tabs.get = async () => ({ id: 8, status: "complete", url: tabUrl });
   context.chrome.tabs.update = async (_id, update) => { tabUrl = update.url; };
   context.runReader = async (_id, method) => method === "findAttendanceUrl" ? "https://stu.slai.edu.cn/a/edu/acm/swipe/attendList" :
-    { month: fixtureState.month, days: fixtureState.days, studentNumber: "000000000" };
+    { ready: true, month: fixtureState.month, days: fixtureState.days, studentNumber: "000000000" };
   const lastSuccess = fixtureState.updatedAt;
   storage.attendanceState = structuredClone(fixtureState);
   context.collectSwipePages = async () => { throw Object.assign(new Error("PRIVATE_FIXTURE"), { code: "SWIPE_INCOMPLETE" }); };
@@ -160,10 +160,18 @@ async function testBackground() {
   assert.match(storage.attendanceState.message, /未找到.*考勤统计查询/);
 
   context.runReader = async (_id, method) => method === "findAttendanceUrl" ? "https://stu.slai.edu.cn/a/edu/acm/swipe/attendList" :
-    { month: fixtureState.month, days: fixtureState.days, studentNumber: "" };
+    { ready: true, month: fixtureState.month, days: fixtureState.days, studentNumber: "" };
   await vm.runInContext("scrapeAttendance({ sourceTabId: 8 })", context);
   assert.equal(storage.attendanceState.status, "partial");
   assert.equal(storage.attendanceState.errorCode, "STUDENT_NUMBER_MISSING", "Missing query identity cannot be reported as full success");
+
+  context.runReader = async (_id, method) => method === "findAttendanceUrl" ? "https://stu.slai.edu.cn/a/edu/acm/swipe/attendList" :
+    { ready: true, month: "2030-04", days: [], studentNumber: "000000000" };
+  context.collectSwipePages = async () => [];
+  await vm.runInContext("scrapeAttendance({ sourceTabId: 8 })", context);
+  assert.equal(storage.attendanceState.status, "ok", "A loaded empty summary must still collect today's swipes");
+  assert.deepEqual(storage.attendanceState.lastCompleteToday.swipes, []);
+  assert.equal(storage.attendanceState.diagnostic, null);
 
   context.chrome.scripting = { executeScript: async () => { throw new Error("Cannot access contents of url https://example.invalid/PRIVATE_FIXTURE. Extension manifest must request permission"); } };
   await assert.rejects(originalReader(8, "extractSwipePage"), error => {
@@ -208,6 +216,13 @@ async function main() {
     await page.setContent('<input value="2030-04"><p>学号: 000000000</p><table><tr><td>2030-04-08</td><td>周一</td><td>工作日</td><td>02:00:00</td><td>否</td></tr></table>');
     const attendance = await page.evaluate(() => __slaiAttendance.extractAttendance());
     assert.equal(attendance.studentNumber, "000000000");
+    await page.setContent('<h1>月度考勤统计汇总</h1><input value="2030-04"><p>学号: 000000000</p><table><tr><td>暂无数据</td></tr></table>');
+    const emptySummary = await page.evaluate(() => __slaiAttendance.extractAttendance());
+    assert.equal(emptySummary.ready, true); assert.deepEqual(emptySummary.days, []);
+    await page.evaluate(() => document.querySelector("table").setAttribute("aria-busy", "true"));
+    assert.equal((await page.evaluate(() => __slaiAttendance.extractAttendance())).ready, false);
+    await page.setContent('<input value="2030-04"><table></table>');
+    assert.equal((await page.evaluate(() => __slaiAttendance.extractAttendance())).ready, false, "An unrecognized/loading table must not become an empty success");
     assert.equal(attendance.days[0].duration, "02:00:00");
     const rows = [
       ["宿舍_道闸出2", "出门", "05:30:00"], ["闸机-东1-入", "进门", "06:00:00"],
@@ -234,7 +249,7 @@ async function main() {
     });
     const listener = { addListener() {}, removeListener() {} };
     const paginationContext = vm.createContext({ URL, Date, setTimeout, clearTimeout,
-      importScripts() {}, __slaiState: { sanitizeState }, __slaiErrors: globalThis.__slaiErrors,
+      importScripts() {}, __slaiTime: globalThis.__slaiTime, __slaiState: { sanitizeState }, __slaiErrors: globalThis.__slaiErrors,
       chrome: { runtime: { onInstalled: listener, onStartup: listener, onMessage: listener },
         alarms: { onAlarm: listener }, action: { onClicked: listener }, windows: { onRemoved: listener },
         tabs: { onUpdated: listener, get: async () => ({ status: 'complete', url: 'https://stu.slai.edu.cn/a/edu/acm/swipe/list' }) } }
@@ -243,7 +258,7 @@ async function main() {
     paginationContext.runReader = async (_id, method) => page.evaluate((name) => globalThis.__slaiAttendance[name](), method);
     const threeVisits = await vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext);
     assert.equal(threeVisits.length, 6);
-    assert.equal(attendanceSeconds({ days: [], todaySwipes: threeVisits }, instant('12:00:00')).seconds, 10800);
+    assert.equal(attendanceSeconds({ status: "ok", updatedAt: "2030-04-08T04:00:00.000Z", days: [], todaySwipes: threeVisits }, instant('12:00:00')).seconds, 10800);
     await page.evaluate(() => { renderSwipeFixture(1); document.querySelector('.pagination').remove(); });
     await assert.rejects(vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext), error => {
       assert.equal(error.code, "SWIPE_INCOMPLETE");
@@ -260,7 +275,7 @@ async function main() {
     assert.equal(layui.pagination.rowCount, 10, "Ignore the table's fixed-column copies");
     const layuiVisits = await vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext);
     assert.equal(layuiVisits.length, 6);
-    assert.equal(attendanceSeconds({ days: [], todaySwipes: layuiVisits }, instant('12:00:00')).seconds, 10800);
+    assert.equal(attendanceSeconds({ status: "ok", updatedAt: "2030-04-08T04:00:00.000Z", days: [], todaySwipes: layuiVisits }, instant('12:00:00')).seconds, 10800);
     const lastPage = await page.evaluate(() => __slaiAttendance.extractSwipePage());
     assert.equal(lastPage.pagination.current, 3, "Read Layui's current page when hidden fields are blank");
     assert.equal(lastPage.pagination.hasNext, false, "Layui's disabled next button must stop collection");
@@ -302,7 +317,7 @@ async function main() {
           if (window.failRequest) throw new Error("Could not establish connection. Receiving end does not exist. PRIVATE_FIXTURE");
           return { state: window.fixtureState };
         },
-        onMessage: { addListener: (fn) => { window.deliverState = fn; } }
+        onMessage: { addListener: (fn) => { (window.stateListeners ||= []).push(fn); window.deliverState = message => window.stateListeners.forEach(listener => listener(message)); } }
       } };
       Object.defineProperty(navigator, "clipboard", { value: { writeText: async text => {
         if (window.failCopy) throw new Error("Simulated clipboard refusal");
@@ -313,9 +328,10 @@ async function main() {
     await ui.waitForFunction(() => document.querySelector("#todayDuration").textContent === "03:00:01");
     await ui.clock.runFor(2000);
     assert.equal(await ui.locator("#todayDuration").innerText(), "03:00:03");
-    assert.deepEqual(await ui.evaluate(() => window.messages), ["get-state"], "Local ticks must not issue server requests");
+    assert.deepEqual(await ui.evaluate(() => window.messages), ["get-state", "get-bridge"], "Local ticks must not issue server requests");
     await ui.evaluate(() => {
       window.fixtureState.todaySwipes.push({ timestamp: "2030-04-08 10:00:00", direction: "出门" });
+      window.fixtureState.lastCompleteToday.swipes = [...window.fixtureState.todaySwipes];
     });
     await ui.locator("#refresh").click();
     assert.equal(await ui.locator("#todayDuration").innerText(), "03:00:00");
@@ -338,17 +354,17 @@ async function main() {
     assert.equal(await ui.locator("#authCard").isVisible(), true);
     assert.match(await ui.locator("#nextRefresh").innerText(), /自动刷新已暂停/);
     await ui.evaluate((state) => window.deliverState({ type: "attendance-state", state }), sanitizeState({
-      ...fixtureState, status: "partial", diagnostic: {
+      ...sanitizeState(fixtureState), status: "partial", diagnostic: {
         code: "SWIPE_TIMEOUT", stage: "read_swipes", page: 2, currentPage: 1, rowsRead: 10, expectedTotal: 23, timeoutMs: 15000,
         occurredAt: "2030-04-08T02:10:00.000Z", message: "PRIVATE_FIXTURE", sourceUrl: "https://example.invalid/PRIVATE_FIXTURE"
       }, summaryUpdatedAt: "2030-04-08T02:10:00.000Z"
     }));
-    assert.equal(await ui.locator("#todayDuration").innerText(), "02:00:00");
+    assert.equal(await ui.locator("#todayDuration").innerText(), "03:00:00");
     assert.equal(await ui.locator(".day-row").count(), 2);
     assert.match(await ui.locator("#updatedAt").innerText(), /汇总更新于/);
     assert.match(await ui.locator("#statusText").innerText(), /超时.*学校汇总/);
     await ui.clock.runFor(2000);
-    assert.equal(await ui.locator("#todayDuration").innerText(), "02:00:00");
+    assert.equal(await ui.locator("#todayDuration").innerText(), "03:00:00");
     assert.equal(await ui.locator("#diagnosticCard").isVisible(), true);
     await ui.locator("#copyDiagnostic").click();
     const copiedReport = await ui.evaluate(() => window.copiedReport);
@@ -372,6 +388,21 @@ async function main() {
     await ui.evaluate(() => { window.failRequest = false; });
     await ui.locator("#refresh").click();
     assert.equal(await ui.locator("#diagnosticCard").isVisible(), false, "Recovery removes stale error details");
+    await ui.evaluate(() => {
+      window.failCopy = false;
+      window.deliverState({ type: "bridge-state", diagnostic: { code: "BRIDGE_TIMEOUT", stage: "bridge_push", timeoutMs: 3000, token: "PRIVATE_FIXTURE" } });
+    });
+    await ui.locator("#bridgeSettings summary").click();
+    assert.match(await ui.locator("#bridgeReport").innerText(), /BRIDGE_TIMEOUT/);
+    await ui.locator("#copyBridge").click();
+    const bridgeReport = await ui.evaluate(() => window.copiedReport);
+    assert.match(bridgeReport, /3 秒/); assert(!bridgeReport.includes("PRIVATE_FIXTURE"));
+    assert.match(await ui.locator("#bridgeStatus").innerText(), /已复制/);
+    await ui.evaluate(() => { window.failCopy = true; });
+    await ui.locator("#copyBridge").click();
+    assert.equal(await ui.evaluate(() => window.getSelection().toString()), bridgeReport);
+    await ui.evaluate(() => window.deliverState({ type: "bridge-state", diagnostic: null }));
+    assert.equal(await ui.locator("#bridgeReport").innerText(), "");
     assert.deepEqual(unexpected, [], "No unexpected network requests during tests");
     console.log("Passed: 23-row pagination, summary fallback, direct error causes and context, privacy, clipboard success/fallback, background disconnect/recovery, pending navigation, scheduling, auth pause and live UI.");
   } finally {
