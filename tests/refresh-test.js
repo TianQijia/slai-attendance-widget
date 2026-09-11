@@ -203,7 +203,7 @@ async function integrationTest() {
     phone.on("request", request => { if (request.url().endsWith("/api/refresh")) attemptedIds.push(request.postDataJSON().id); });
     await phone.route("**/api/refresh", route => { heldRequests.push(route); });
     await phone.locator("#refreshView").click();
-    await phone.waitForFunction(() => schoolRefreshDiagnostic?.code === "REFRESH_SEND_TIMEOUT");
+    await phone.waitForFunction(() => document.querySelector("#connectionReport").textContent.includes("REFRESH_SEND_TIMEOUT"));
     assert.match(await phone.locator("#connectionReport").innerText(), /等待上限：3 秒/);
     assert.equal(calls, 5, "A request stalled before delivery must not scrape school data");
     await phone.unroute("**/api/refresh");
@@ -216,7 +216,7 @@ async function integrationTest() {
     await advance();
     await phone.route("**/api/refresh", route => route.fulfill({ status: 404, contentType: "application/json", body: '{"raw":"PRIVATE_FIXTURE"}' }));
     await phone.locator("#refreshView").click();
-    await phone.waitForFunction(() => schoolRefreshDiagnostic?.code === "REFRESH_UNSUPPORTED");
+    await phone.waitForFunction(() => document.querySelector("#connectionReport").textContent.includes("REFRESH_UNSUPPORTED"));
     assert.match(await phone.locator("#connectionReport").innerText(), /404/);
     assert.doesNotMatch(await phone.locator("#connectionReport").innerText(), /PRIVATE_FIXTURE/);
     assert(schoolRequests.every(method => method === "POST"));
