@@ -17,7 +17,10 @@ async function connectionInfo(dir, host) {
   const config = await loadConfig(dir);
   const url = `http://${host || "127.0.0.1"}:32100/#token=${config.viewToken}`;
   const file = path.join(dir, "connection.html");
-  await fs.writeFile(file, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SLAI 本机连接信息</title><style>body{font:16px/1.7 system-ui;background:#101b1a;color:#f3faf7;max-width:680px;margin:40px auto;padding:24px}input,textarea{box-sizing:border-box;width:100%;font:14px/1.6 monospace;padding:12px;background:#263b36;color:#fff;border:1px solid #507060;border-radius:8px}a{color:#72e4ad}p{color:#c2d2cd}</style><h1>SLAI 手机查看</h1><p>1. 在 Chrome 扩展小窗展开“手机查看”，粘贴下方本机配对码，再点击启用。</p><input aria-label="本机配对码" readonly value="${escape(config.writeToken)}"><p>本机配对码仅交给电脑扩展，不发送到手机。</p><p>2. 手机与电脑连接同一 Wi-Fi，将下方查看链接传到自己的手机浏览器打开。</p><textarea aria-label="手机查看链接" readonly rows="3">${escape(url)}</textarea><p><a href="${escape(url)}" rel="noreferrer">在本机打开查看页</a></p><p>${host ? "已选择局域网地址：" + escape(host) : "未找到局域网地址，目前仅可本机查看。连接 Wi-Fi 后重新启动。"}</p><p>查看链接含访问令牌，请仅交给自己的设备。此版本使用局域网 HTTP；可信 Wi-Fi 内使用。</p><pre>${host ? "" : escape(diagnosticReport({ code: "LAN_UNAVAILABLE", stage: "companion_start" }))}</pre><p>学校次日才提供累计时长，今天按完整进出明细估算。电脑保持 Chrome 与伴随服务运行。</p></html>`, { mode: 0o600 });
+  const html = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SLAI 本机连接信息</title><style>body{font:16px/1.7 system-ui;background:#101b1a;color:#f3faf7;max-width:680px;margin:40px auto;padding:24px}input,textarea{box-sizing:border-box;width:100%;font:14px/1.6 monospace;padding:12px;background:#263b36;color:#fff;border:1px solid #507060;border-radius:8px}a{color:#72e4ad}p{color:#c2d2cd}</style><h1>SLAI 手机查看</h1><p>1. 在 Chrome 扩展小窗展开“手机查看”，粘贴下方本机配对码，再点击启用。</p><input aria-label="本机配对码" readonly value="${escape(config.writeToken)}"><p>本机配对码仅交给电脑扩展，不发送到手机。</p><p>2. 手机与电脑连接同一 Wi-Fi，将下方查看链接传到自己的手机浏览器打开。</p><textarea aria-label="手机查看链接" readonly rows="3">${escape(url)}</textarea><p><a href="${escape(url)}" rel="noreferrer">在本机打开查看页</a></p><p>${host ? "已选择局域网地址：" + escape(host) : "未找到局域网地址，目前仅可本机查看。连接 Wi-Fi 后重新启动。"}</p><p>查看链接含访问令牌，请仅交给自己的设备。此版本使用局域网 HTTP；可信 Wi-Fi 内使用。</p><pre>${host ? "" : escape(diagnosticReport({ code: "LAN_UNAVAILABLE", stage: "companion_start" }))}</pre><p>学校次日才提供累计时长，今天按完整进出明细估算。电脑保持 Chrome 与伴随服务运行。</p></html>`;
+  // Keep the diagnostic entry available even when the HTTP service is down.
+  const help = '<section><h2>网络检测</h2><p>手机打不开时，双击 companion 文件夹内的 diagnose.command（Mac）或 diagnose.cmd（Windows）。检测会打开可复制的脱敏报告；服务未启动时也能运行。</p><p>检测只读取状态，不更改网络和防火墙。校园网是否允许设备互访，仍需手机访问确认。</p></section>';
+  await fs.writeFile(file, html.replace("</html>", help + "</html>"), { mode: 0o600 });
   return file;
 }
 function openFile(file) {
@@ -64,6 +67,15 @@ async function main(args = process.argv.slice(2)) {
   const command = args[0] || "start";
   const option = name => args.includes(name) ? args[args.indexOf(name) + 1] : null;
   const dir = path.resolve(option("--data-dir") || dataDirectory());
+  if (command === "diagnose") {
+    const { collectDiagnostics, writeReport } = require("./network-diagnostics");
+    const { reportText } = require("./network-report");
+    const report = await collectDiagnostics({ dir });
+    console.log(reportText(report));
+    const file = await writeReport(dir, report);
+    if (!args.includes("--headless")) openFile(file);
+    return;
+  }
   await loadConfig(dir);
   const diagnosticFile = path.join(dir, "startup-diagnostic.local.json");
   if (command === "autostart" || command === "remove-autostart") {

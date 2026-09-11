@@ -1,6 +1,12 @@
 (() => {
   // Only fixed text and allowlisted structural facts may reach storage or UI.
   const failures = {
+    NET_PROBE_FAILED: ["网络检测请求未能完成", "检查附带的系统错误代码；原因未知时先确认本机服务，再用另一台设备测试。"],
+    NET_PROBE_TIMEOUT: ["网络检测请求超过等待上限", "确认伴随服务正在运行；超时本身不能确定是防火墙或校园网隔离。"],
+    NET_HTTP_FAILED: ["检测接口返回了非预期 HTTP 状态", "根据 HTTP 状态码检查配对配置和软件版本。"],
+    NET_RESPONSE_INVALID: ["检测接口响应与此伴随服务协议不符", "检查端口是否为当前版本伴随服务占用。"],
+    NET_INSPECT_FAILED: ["未能读取操作系统网络或防火墙状态", "在系统设置中手动检查；若系统限制查询，反馈此报告给管理员。"],
+    NET_REPORT_WRITE_FAILED: ["未能保存网络检测报告", "检查用户数据目录权限与磁盘空间；终端仍可查看脱敏报告。"],
     BRIDGE_PERMISSION: ["浏览器未授予本机连接权限", "在手机查看设置中重新启用并允许本机权限。"],
     BRIDGE_TOKEN: ["本机配对码不正确", "打开伴随服务的连接信息，重新复制配对码。"],
     BRIDGE_TIMEOUT: ["本机服务在等待上限内未完成响应", "确认伴随服务正在运行，再重试连接。"],
@@ -52,6 +58,7 @@
     UNEXPECTED_ERROR: ["发生尚未分类的异常，直接原因尚未识别", "复制包含失败阶段和异常类型的排错信息反馈。"]
   };
   const stages = {
+    network_probe: "检测本机网络接口", network_inspect: "读取系统网络配置", network_report: "保存网络检测报告",
     bridge_settings: "设置本机连接", bridge_push: "扩展推送本机状态", companion_start: "启动伴随服务",
     companion_read: "读取服务缓存", companion_write: "保存服务缓存", companion_request: "处理本机请求",
     viewer_fetch: "手机读取状态", autostart: "设置登录后启动",
@@ -71,7 +78,9 @@
   const methods = ["findAttendanceUrl", "extractAttendance", "extractSwipePage", "advanceSwipePage"];
   const errorNames = ["Error", "TypeError", "ReferenceError", "RangeError", "SyntaxError", "DOMException", "TimeoutError"];
   const networkCodes = ["ERR_NAME_NOT_RESOLVED", "ERR_CONNECTION_TIMED_OUT", "ERR_CONNECTION_RESET", "ERR_CONNECTION_REFUSED", "ERR_INTERNET_DISCONNECTED", "ERR_NETWORK_CHANGED", "ERR_CERT_AUTHORITY_INVALID", "ERR_CERT_DATE_INVALID", "ERR_CERT_COMMON_NAME_INVALID", "ERR_SSL_PROTOCOL_ERROR", "ERR_TUNNEL_CONNECTION_FAILED", "ERR_PROXY_CONNECTION_FAILED"];
-  const systemCodes = { EACCES: "操作系统拒绝访问", EPERM: "操作系统不允许此操作", ENOSPC: "存储空间不足", EIO: "操作系统报告输入输出错误", EADDRINUSE: "地址已被占用", EADDRNOTAVAIL: "此地址当前不可用", EMFILE: "此进程已打开过多文件", ENFILE: "系统已打开过多文件", ENOENT: "所需文件或目录不存在" };
+  const systemCodes = { EACCES: "操作系统拒绝访问", EPERM: "操作系统不允许此操作", ENOSPC: "存储空间不足", EIO: "操作系统报告输入输出错误", EADDRINUSE: "地址已被占用", EADDRNOTAVAIL: "此地址当前不可用", EMFILE: "此进程已打开过多文件", ENFILE: "系统已打开过多文件", ENOENT: "所需文件或目录不存在", ECONNREFUSED: "连接被拒绝", ECONNRESET: "连接被重置", ETIMEDOUT: "连接超时", EHOSTUNREACH: "目标主机不可达", ENETUNREACH: "目标网络不可达" };
+  systemCodes.EEXIST = "路径已被现有文件或目录占用";
+  systemCodes.ENOTDIR = "路径中的一项不是目录";
   const numericFields = { page: [1, 51], currentPage: [1, 10000], rowsRead: [0, 1000000], expectedTotal: [0, 1000000], actualTotal: [0, 1000000], timeoutMs: [0, 300000], httpStatus: [100, 599], port: [1, 65535] };
 
   function sanitizeDiagnostic(input) {

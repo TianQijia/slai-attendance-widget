@@ -48,7 +48,8 @@ const staticFiles = {
   "/view.js": ["extension/view.js", "text/javascript; charset=utf-8"],
   "/time-utils.js": ["extension/time-utils.js", "text/javascript; charset=utf-8"],
   "/state-utils.js": ["extension/state-utils.js", "text/javascript; charset=utf-8"],
-  "/error-utils.js": ["extension/error-utils.js", "text/javascript; charset=utf-8"]
+  "/error-utils.js": ["extension/error-utils.js", "text/javascript; charset=utf-8"],
+  "/network-report.js": ["companion/network-report.js", "text/javascript; charset=utf-8"]
 };
 function readBody(req) {
   return new Promise((resolve, reject) => {

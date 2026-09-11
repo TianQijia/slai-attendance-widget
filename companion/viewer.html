@@ -76,6 +76,14 @@
         <button id="reconnect" type="button">重新连接查看服务</button>
         <pre id="connectionReport"></pre>
         <button id="copyConnection" type="button">复制连接排错信息</button>
+        <details id="networkDetails">
+          <summary>网络检测</summary>
+          <p>只检测本查看服务，不触发学校采集。页面完全打不开时，请在电脑运行 diagnose 启动器。</p>
+          <button id="checkNetwork" type="button">开始网络检测</button>
+          <button id="copyNetwork" type="button">复制网络检测报告</button>
+          <pre id="networkReport"></pre>
+          <p id="networkCopyStatus" role="status"></p>
+        </details>
       </section>
       <footer>
         <span id="summaryUpdatedAt">学校汇总尚未更新</span>
@@ -87,6 +95,7 @@
     <script src="time-utils.js"></script>
     <script src="state-utils.js"></script>
     <script src="view.js"></script>
+    <script src="network-report.js"></script>
     <script src="viewer.js"></script>
   </body>
 </html>

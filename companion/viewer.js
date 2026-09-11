@@ -1,6 +1,7 @@
 mobileView = true;
 let envelope = null, lastContact = null, anchorTime = Date.now(), anchorMono = performance.now(), connectionDiagnostic = null;
 let activeRequest = null;
+let lastRequestMs = null;
 let token = "";
 try {
   token = new URLSearchParams(location.hash.slice(1)).get("token") || sessionStorage.getItem("viewToken") || "";
@@ -22,6 +23,7 @@ function connectionView() {
 async function fetchState() {
   if (activeRequest) return activeRequest;
   activeRequest = (async () => {
+    const started = performance.now();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
     try {
@@ -36,7 +38,7 @@ async function fetchState() {
     } catch (error) {
       connectionDiagnostic = diagnoseError(error.code ? error : globalThis.__slaiErrors.codedError(controller.signal.aborted ? "VIEW_TIMEOUT" : "VIEW_UNREACHABLE", controller.signal.aborted ? { timeoutMs: 3000 } : {}, error), { stage: "viewer_fetch", operation: "http_request" });
       if (currentState) renderToday(currentState);
-    } finally { clearTimeout(timeout); connectionView(); }
+    } finally { lastRequestMs = Math.round(performance.now() - started); clearTimeout(timeout); connectionView(); }
   })().finally(() => { activeRequest = null; });
   return activeRequest;
 }
@@ -49,6 +51,28 @@ $("copyConnection").addEventListener("click", async () => {
     const range = document.createRange(); range.selectNodeContents($("connectionReport"));
     window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
     $("connectionStatus").textContent = "自动复制未获允许，请手动复制已选中的信息。";
+  }
+});
+$("checkNetwork").addEventListener("click", async () => {
+  const button = $("checkNetwork");
+  button.disabled = true;
+  $("networkCopyStatus").textContent = "正在检测…";
+  try {
+    await fetchState();
+    const checks = [{ id: "browser", code: connectionDiagnostic ? "NET_REQUEST_FAILED" : "NET_BROWSER_OK", diagnostic: connectionDiagnostic, elapsedMs: lastRequestMs, timeoutMs: 3000 }];
+    if (!connectionDiagnostic && envelope) checks.push(...globalThis.__slaiNetwork.freshnessChecks({ ...envelope, serverTime: new Date(viewNow()).toISOString() }));
+    $("networkReport").textContent = globalThis.__slaiNetwork.reportText({ platform: "browser", createdAt: new Date().toISOString(), checks });
+    $("networkCopyStatus").textContent = "检测完成，可复制脱敏报告。";
+  } finally { button.disabled = false; }
+});
+$("copyNetwork").addEventListener("click", async () => {
+  const report = $("networkReport");
+  if (!report.textContent) { $("networkCopyStatus").textContent = "请先开始网络检测。"; return; }
+  try { await navigator.clipboard.writeText(report.textContent); $("networkCopyStatus").textContent = "已复制网络检测报告"; }
+  catch {
+    const range = document.createRange(); range.selectNodeContents(report);
+    window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
+    $("networkCopyStatus").textContent = "自动复制未获允许，请手动复制已选中的报告。";
   }
 });
 document.addEventListener("visibilitychange", () => { if (!document.hidden) fetchState(); });

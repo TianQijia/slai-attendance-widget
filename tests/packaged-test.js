@@ -35,7 +35,7 @@ async function unpack(file, dir, names) {
   const host = lanAddresses()[0];
   const invoke = command => {
     const script = path.join(bundle, "companion", `${command}.${target === "win-x64" ? "cmd" : "command"}`);
-    const options = { env: { ...process.env, PATH: "" }, timeout: 15000 };
+    const options = { env: { ...process.env, PATH: "" }, timeout: command === "diagnose" ? 30000 : 15000 };
     if (target !== "win-x64") return execFile(script, ["--headless", "--data-dir", dir, ...(host ? ["--host", host] : [])], options);
     const line = `""${script}" --headless --data-dir "${dir}"${host ? ` --host ${host}` : ""}"`;
     return execFile(path.join(process.env.SystemRoot, "System32", "cmd.exe"), ["/d", "/s", "/c", line], { ...options, windowsVerbatimArguments: true });
@@ -103,6 +103,16 @@ async function unpack(file, dir, names) {
     await until(async () => (await read()).state?.status === "ok");
     const pushed = await read(); assert.equal(pushed.state.schemaVersion, 4); assert.equal(pushed.state.updatedAt, complete.updatedAt);
     assert(!JSON.stringify(pushed).includes("PRIVATE_FIXTURE"));
+    const network = await invoke("diagnose");
+    assert.match(network.stdout, /NET_HTTP_OK/); assert.match(network.stdout, /NET_EXTENSION_RECENT/);
+    assert.match(network.stdout, /NET_DATA_FRESH/); assert.match(network.stdout, /NET_PEER_UNVERIFIED/);
+    assert(!network.stdout.includes(config.viewToken) && !network.stdout.includes(config.writeToken));
+    const report = JSON.parse(await fs.readFile(path.join(dir, "network-diagnostic.local.json"), "utf8"));
+    assert.equal(report.platform, process.platform);
+    assert.equal(report.checks.some(check => check.id === "profile"), target === "win-x64");
+    assert(report.checks.some(check => check.id === "firewall"));
+    assert(!network.stdout.includes("NET_INSPECT_FAILED"), "Bundled native firewall inspector must execute on the CI host");
+    assert.equal((await read()).state.updatedAt, complete.updatedAt, "Network diagnosis must preserve original data timestamps");
     if (host) {
       const lan = await fetch(`http://${host}:32100/api/state`, { headers: { Authorization: `Bearer ${config.viewToken}` }, signal: AbortSignal.timeout(3000) });
       assert.equal(lan.status, 200);
@@ -110,6 +120,8 @@ async function unpack(file, dir, names) {
     }
     await invoke("stop"); running = false;
     await until(async () => { try { await read(); return false; } catch { return true; } });
+    const offlineNetwork = await invoke("diagnose");
+    assert.match(offlineNetwork.stdout, /ECONNREFUSED/);
     await worker.evaluate(async () => { await queueBridgePush(await getState()); });
     const failure = await worker.evaluate(async () => ({ state: await getState(), bridge: await getBridgeInfo() }));
     assert.equal(failure.state.status, "ok"); assert.equal(failure.bridge.diagnostic.code, "BRIDGE_UNREACHABLE");

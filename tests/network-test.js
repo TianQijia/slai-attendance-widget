@@ -1,0 +1,132 @@
+const assert = require("node:assert/strict");
+const fs = require("node:fs/promises");
+const os = require("node:os");
+const path = require("node:path");
+const http = require("node:http");
+const { chromium } = require("playwright");
+const { createCompanion, atomicWrite } = require("../companion/server");
+const { collectDiagnostics, inspectSystem, systemChecks, probe, writeReport, reportHtml } = require("../companion/network-diagnostics");
+const { sanitizeReport, reportText, freshnessChecks } = require("../companion/network-report");
+const { sanitizeState } = globalThis.__slaiState;
+const { codedError, diagnoseError } = globalThis.__slaiErrors;
+const now = Date.parse("2030-04-08T04:00:00Z");
+const stamp = new Date(now).toISOString();
+const fixture = sanitizeState({ status: "ok", updatedAt: stamp, summaryUpdatedAt: stamp, month: "2030-04", days: [], todaySwipes: [], lastCompleteToday: { date: "2030-04-08", updatedAt: stamp, swipes: [] } });
+const code = (report, id) => report.checks.find(check => check.id === id)?.code;
+const noPrivate = input => assert(!JSON.stringify(input).match(/PRIVATE_FIXTURE|viewToken|writeToken|studentName|cookie|192\.168\.|10\.44\.|\/private\//));
+async function run() {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "slai-network-test-"));
+  let service, slow, browser;
+  try {
+    service = await createCompanion({ dir, readPort: 0, writePort: 0, now: () => now });
+    const { readPort, writePort } = service;
+    const token = service.config.viewToken;
+    const post = await fetch(`http://127.0.0.1:${writePort}/api/state`, { method: "POST", headers: { Authorization: `Bearer ${service.config.writeToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ schemaVersion: 1, state: fixture }) });
+    assert.equal(post.status, 200);
+    const live = await probe({ host: "127.0.0.1", port: readPort, token });
+    assert.equal(live.body.state.status, "ok");
+    const before = await fs.readFile(path.join(dir, "attendance.json"), "utf8");
+    await atomicWrite(path.join(dir, "network.local.json"), { host: "10.44.0.8", networkName: "PRIVATE_FIXTURE" });
+    const calls = [];
+    const request = async options => {
+      calls.push(options);
+      // Synthetic LAN addresses never leave this fixture. Real loopback probes
+      // below and the packaged test exercise the actual HTTP transport.
+      return options.host === "10.44.0.8" ? live : probe(options);
+    };
+    const options = { dir, readPort, writePort, addresses: ["10.44.0.8"], request, now: () => now,
+      inspect: async () => systemChecks({ platform: "win32", category: "Public", firewall: "On", rule: "Program", studentName: "PRIVATE_FIXTURE" }) };
+    const report = await collectDiagnostics(options);
+    assert.equal(code(report, "loopback"), "NET_HTTP_OK");
+    assert.equal(code(report, "lan"), "NET_HTTP_OK");
+    assert.equal(code(report, "write"), "NET_WRITE_READY");
+    assert.equal(code(report, "profile"), "NET_PROFILE_PUBLIC");
+    assert.equal(code(report, "rule"), "NET_RULE_PROGRAM");
+    assert.equal(code(report, "extension"), "NET_EXTENSION_RECENT");
+    assert.equal(code(report, "data"), "NET_DATA_FRESH");
+    assert.equal(code(report, "peer"), "NET_PEER_UNVERIFIED");
+    assert.equal(await fs.readFile(path.join(dir, "attendance.json"), "utf8"), before, "Probes must never overwrite attendance or advance its timestamps");
+    assert(calls.every(call => !call.write || !call.token), "Write-port probe must not use a write credential");
+    noPrivate(report); noPrivate(reportText(report));
+    await writeReport(dir, { ...report, token: "PRIVATE_FIXTURE", checks: report.checks.map(check => ({ ...check, url: "PRIVATE_FIXTURE", message: "PRIVATE_FIXTURE" })) });
+    const cached = JSON.parse(await fs.readFile(path.join(dir, "network-diagnostic.local.json"), "utf8"));
+    assert.deepEqual(cached, report); noPrivate(await fs.readFile(path.join(dir, "network-diagnostic.html"), "utf8"));
+    calls.length = 0;
+    const changed = await collectDiagnostics({ ...options, addresses: ["10.44.0.9"] });
+    assert.equal(code(changed, "selected"), "NET_ADDRESS_CHANGED"); assert.equal(code(changed, "lan"), "NET_SKIPPED");
+    assert(calls.every(call => call.host === "127.0.0.1"), "Never probe a saved address after it stops belonging to this computer");
+    assert.equal(code(await collectDiagnostics({ ...options, addresses: [] }), "addresses"), "NET_LAN_NONE");
+    const wrong = await collectDiagnostics({ ...options, request: options => probe({ ...options, token: "x".repeat(43) }) });
+    assert.equal(wrong.checks.find(check => check.id === "loopback").diagnostic.code, "ACCESS_DENIED");
+    assert.equal(wrong.checks.find(check => check.id === "loopback").diagnostic.httpStatus, 401);
+    const old = freshnessChecks({ ...live.body, serverTime: new Date(now + 36 * 60000).toISOString() });
+    assert.equal(old[0].code, "NET_EXTENSION_OLD"); assert.equal(old[1].code, "NET_DATA_OLD");
+    assert.equal(freshnessChecks({ ...live.body, serverTime: "2030-04-09T04:00:00Z" })[1].code, "NET_DATA_MISSING");
+    await service.close(); service = null;
+    const offline = await collectDiagnostics(options);
+    const failure = offline.checks.find(check => check.id === "loopback");
+    assert.equal(failure.diagnostic.code, "NET_PROBE_FAILED"); assert.equal(failure.diagnostic.systemCode, "ECONNREFUSED");
+    assert.equal(failure.diagnostic.stage, "network_probe"); assert.equal(failure.diagnostic.port, readPort);
+    const cleaned = sanitizeState({ status: "error", diagnostic: { ...failure.diagnostic, account: "PRIVATE_FIXTURE" } });
+    const cleanedReport = sanitizeReport({ ...offline, checks: [{ ...failure, diagnostic: cleaned.diagnostic }] });
+    assert.match(reportText(cleanedReport), /连接被拒绝/); noPrivate(cleanedReport);
+    await writeReport(dir, cleanedReport);
+    const stored = JSON.parse(await fs.readFile(path.join(dir, "network-diagnostic.local.json"), "utf8"));
+    assert.equal(stored.checks[0].diagnostic.systemCode, "ECONNREFUSED");
+    const blocked = path.join(dir, "blocked-report-target");
+    await fs.writeFile(blocked, "PRIVATE_FIXTURE");
+    await assert.rejects(writeReport(blocked, stored), error => {
+      const d = diagnoseError(error);
+      assert.equal(d.code, "NET_REPORT_WRITE_FAILED"); assert.equal(d.stage, "network_report");
+      assert(["EEXIST", "ENOTDIR"].includes(d.systemCode));
+      noPrivate(d); return true;
+    });
+    service = await createCompanion({ dir, readPort, writePort, now: () => now });
+    const recovered = await collectDiagnostics(options);
+    assert.equal(code(recovered, "loopback"), "NET_HTTP_OK");
+    assert.equal(code(recovered, "extension"), "NET_EXTENSION_NEVER");
+    assert(!reportText(recovered).includes("ECONNREFUSED"), "A new successful report clears the prior probe failure");
+    const emptyDir = path.join(dir, "not-started");
+    const unstarted = await collectDiagnostics({ ...options, dir: emptyDir });
+    assert.equal(code(unstarted, "config"), "NET_CONFIG_MISSING");
+    await assert.rejects(fs.access(path.join(emptyDir, "config.local.json")), "Diagnosing must not generate credentials");
+    slow = http.createServer((_req, res) => { res.writeHead(200); res.write("{"); });
+    await new Promise(resolve => slow.listen(0, "127.0.0.1", resolve));
+    await assert.rejects(probe({ host: "127.0.0.1", port: slow.address().port, token, timeoutMs: 50 }), error => {
+      const d = diagnoseError(error, { stage: "network_probe" });
+      assert.equal(d.code, "NET_PROBE_TIMEOUT"); assert.equal(d.timeoutMs, 50); return true;
+    });
+    slow.closeAllConnections(); await new Promise(resolve => slow.close(resolve)); slow = null;
+    const mac = await inspectSystem({ platform: "darwin", runtime: "/private/PRIVATE_FIXTURE", execute: async (_file, args) => ({ stdout: ({ "--getglobalstate": "Firewall is enabled. (State = 1)", "--getblockall": "Firewall has block all state set to enabled.", "--getappblocked": "Incoming connection to /private/PRIVATE_FIXTURE is blocked." })[args[0]] }) });
+    assert.equal(mac[0].code, "NET_FIREWALL_BLOCK_ALL"); assert.equal(mac[1].code, "NET_RULE_BLOCKED"); noPrivate(mac);
+    const permitted = await inspectSystem({ platform: "darwin", execute: async (_file, args) => ({ stdout: args[0] === "--getglobalstate" ? "Firewall is disabled. (State = 0)" : args[0] === "--getblockall" ? "Firewall has block all state set to disabled." : "Incoming connection to /private/PRIVATE_FIXTURE is permitted." }) });
+    assert.equal(permitted[0].code, "NET_FIREWALL_OFF"); assert.equal(permitted[1].code, "NET_RULE_READY"); noPrivate(permitted);
+    const denied = await inspectSystem({ platform: "darwin", execute: async () => { throw Object.assign(new Error("PRIVATE_FIXTURE"), { code: "EPERM" }); } });
+    assert.equal(denied[0].code, "NET_FIREWALL_UNKNOWN"); assert.equal(denied[0].diagnostic.systemCode, "EPERM"); noPrivate(denied);
+    const win = await inspectSystem({ platform: "win32", host: "10.44.0.8", execute: async () => ({ stdout: JSON.stringify({ schemaVersion: 1, category: "Public", firewall: "On", rule: "Missing", adapterName: "PRIVATE_FIXTURE" }) }) });
+    assert.equal(win[0].code, "NET_PROFILE_PUBLIC"); assert.equal(win[2].code, "NET_RULE_MISSING"); noPrivate(win);
+    const unknown = sanitizeReport({ checks: [{ id: "loopback", code: "PRIVATE_FIXTURE", diagnostic: { code: "NET_PROBE_FAILED", stage: "network_probe", systemCode: "PRIVATE_FIXTURE", message: "PRIVATE_FIXTURE" } }] });
+    noPrivate(reportText(unknown));
+    browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined });
+    const page = await browser.newPage({ viewport: { width: 800, height: 900 } });
+    await page.setContent(reportHtml(stored));
+    await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async text => { window.copiedReport = text; } } }));
+    await page.locator("#copyReport").click();
+    assert.equal(await page.locator("#copyStatus").innerText(), "已复制网络检测报告");
+    assert.match(await page.evaluate(() => window.copiedReport), /ECONNREFUSED/); noPrivate(await page.evaluate(() => window.copiedReport));
+    await page.evaluate(() => { navigator.clipboard.writeText = async () => { throw new Error("PRIVATE_FIXTURE"); }; });
+    await page.locator("#copyReport").click();
+    assert.match(await page.locator("#copyStatus").innerText(), /手动复制/);
+    assert(await page.locator("#networkReport").evaluate(element => element.selectionStart === 0 && element.selectionEnd === element.value.length));
+    await page.setContent(reportHtml(report));
+    await fs.mkdir(path.join(__dirname, "../test-results"), { recursive: true });
+    await page.screenshot({ path: path.join(__dirname, "../test-results/network-diagnostic.png"), fullPage: true });
+    console.log("Passed: read-only network diagnosis, stale address avoidance, native firewall adapters, refused/token/timeout causes, report persistence and privacy, recovery, cross-day freshness, clipboard success and manual fallback.");
+  } finally {
+    if (browser) await browser.close();
+    if (service) await service.close();
+    if (slow) { slow.closeAllConnections(); await new Promise(resolve => slow.close(resolve)); }
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
+run().catch(error => { console.error(error); process.exitCode = 1; });

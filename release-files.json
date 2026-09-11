@@ -47,7 +47,13 @@
     "companion/stop.cmd",
     "companion/stop.command",
     "companion/viewer.html",
-    "companion/viewer.js"
+    "companion/viewer.js",
+    "companion/network-report.js",
+    "companion/network-diagnostics.js",
+    "companion/inspect-windows.ps1",
+    "companion/diagnose.command",
+    "companion/diagnose.cmd",
+    "tests/network-test.js"
   ],
   "archive": [
     "manifest.json",
@@ -74,6 +80,8 @@
     "companion/protocol.js",
     "companion/viewer.js",
     "companion/viewer.html",
+    "companion/network-report.js",
+    "companion/network-diagnostics.js",
     "extension/time-utils.js",
     "extension/state-utils.js",
     "extension/error-utils.js",
@@ -82,6 +90,7 @@
   ],
   "companionPlatforms": {
     "darwin-arm64": [
+      "companion/diagnose.command",
       "companion/start.command",
       "companion/stop.command",
       "companion/connection-info.command",
@@ -89,6 +98,8 @@
       "companion/disable-autostart.command"
     ],
     "win-x64": [
+      "companion/diagnose.cmd",
+      "companion/inspect-windows.ps1",
       "companion/start.cmd",
       "companion/stop.cmd",
       "companion/connection-info.cmd",
