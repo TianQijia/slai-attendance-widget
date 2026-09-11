@@ -377,11 +377,15 @@ async function main() {
     await ui.evaluate(() => { window.failCopy = true; });
     await ui.locator("#copyDiagnostic").click();
     assert.match(await ui.locator("#copyStatus").innerText(), /手动复制/);
-    assert.equal(await ui.evaluate(() => window.getSelection().toString()), copiedReport);
+    const manualReport = ui.getByRole("textbox", { name: "可手动复制的报告" });
+    assert.equal(await manualReport.inputValue(), copiedReport);
+    assert.equal(await manualReport.evaluate(el => el.selectionEnd - el.selectionStart), copiedReport.length);
+    await ui.getByRole("button", { name: "关闭手动复制" }).click();
     await ui.screenshot({ path: path.join(root, "test-results", "summary-fallback.png"), fullPage: true });
     await ui.evaluate(() => { window.failRequest = true; });
     await ui.locator("#refresh").click();
     assert.match(await ui.locator("#statusText").innerText(), /后台.*连接已断开/);
+    await ui.locator("#diagnosticDetails summary").click();
     assert.match(await ui.locator("#diagnosticReport").innerText(), /WIDGET_DISCONNECTED/);
     assert.equal(await ui.locator("#refresh").isEnabled(), true);
     assert.doesNotMatch(await ui.locator("body").innerText(), /PRIVATE_FIXTURE/);

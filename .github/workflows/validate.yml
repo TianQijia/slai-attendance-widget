@@ -28,6 +28,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install chromium
+      - if: runner.os == 'macOS'
+        run: npx playwright install webkit
       - run: npm test
       - run: npm run audit:release
       - run: npm run build

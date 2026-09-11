@@ -9,6 +9,7 @@ const $ = (id) => document.getElementById(id);
 const { localDateKey, secondsFromDuration, attendanceSeconds } = globalThis.__slaiTime;
 const { sanitizeState } = globalThis.__slaiState;
 const { diagnoseError, describeDiagnostic, diagnosticReport } = globalThis.__slaiErrors;
+const { setReportText, copyReport } = globalThis.__slaiReports;
 
 function shortDuration(seconds, empty = "0 分钟") {
   const safe = Math.max(0, Math.round(seconds));
@@ -84,7 +85,8 @@ function renderDays(state) {
   }).join("");
 
   const todayRow = list.querySelector(".today");
-  if (todayRow) todayRow.scrollIntoView({ block: "center" });
+  // Center within the history list without moving the phone's whole page.
+  if (todayRow) list.scrollTop = todayRow.offsetTop - (list.clientHeight - todayRow.clientHeight) / 2;
 }
 
 function renderToday(state) {
@@ -146,32 +148,18 @@ function render(state) {
 
 function renderDiagnostic(state) {
   $("diagnosticCard").classList.toggle("hidden", !state.diagnostic);
-  $("copyStatus").textContent = "";
   if (!state.diagnostic) {
-    $("diagnosticReport").textContent = "";
+    setReportText($("diagnosticReport"), "", $("copyStatus"));
     return;
   }
   let version = "";
   try { version = chrome.runtime.getManifest?.().version || ""; } catch { /* Old window after extension reload. */ }
   $("diagnosticAction").textContent = describeDiagnostic(state.diagnostic).action;
-  $("diagnosticReport").textContent = diagnosticReport(state.diagnostic, { version, status: state.status });
+  setReportText($("diagnosticReport"), diagnosticReport(state.diagnostic, { version, status: state.status }), $("copyStatus"));
 }
 
 async function copyDiagnostic() {
-  const report = $("diagnosticReport").textContent;
-  if (!report) return;
-  try {
-    await navigator.clipboard.writeText(report);
-    $("copyStatus").textContent = "已复制排错信息";
-  } catch {
-    $("diagnosticDetails").open = true;
-    const range = document.createRange();
-    range.selectNodeContents($("diagnosticReport"));
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(range);
-    $("copyStatus").textContent = "浏览器未允许自动复制，请手动复制已选中的信息。";
-  }
+  await copyReport($("diagnosticReport"), $("copyStatus"), "已复制排错信息");
 }
 
 function updateNextRefresh() {

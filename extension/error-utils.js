@@ -20,6 +20,11 @@
     REQUEST_TIMEOUT: ["请求数据未在等待上限内传输完成", "检查本机连接后重试。"],
     METHOD_NOT_ALLOWED: ["此入口不接受该请求方法", "查看端仅支持 GET；扩展写入必须使用本机写入端口。"],
     ACCESS_DENIED: ["查看令牌无效或缺失", "从本机连接信息重新打开手机查看链接。"],
+    VIEW_TOKEN_MISSING: ["当前页面没有保存查看权限", "粘贴电脑连接信息中的完整手机查看链接；仅输入 IP 地址无法恢复权限。自己的设备可勾选记住查看权限。"],
+    VIEW_TOKEN_REJECTED: ["服务已响应，但拒绝了此查看令牌", "从电脑连接信息重新取得手机查看链接；请勿使用本机配对码。"],
+    VIEW_LINK_INVALID: ["输入内容不是完整有效的手机查看链接", "复制电脑连接信息中的手机查看链接，保留 #token= 后的内容，再粘贴到本页。"],
+    VIEW_LINK_ORIGIN: ["查看链接的服务地址与本页不同", "直接在浏览器打开电脑提供的完整手机查看链接；本页不会把令牌发送到其他地址。"],
+    VIEW_STORAGE_UNAVAILABLE: ["浏览器未能读写查看权限存储", "当前页面仍可使用有效链接连接；关闭页面后请重新打开完整查看链接，或允许此站点存储。"],
     ORIGIN_DENIED: ["请求来源或主机不在允许范围", "使用启动器显示的地址，不要通过其他网页转发写入。"],
     PORT_IN_USE: ["服务端口已被其他进程占用", "先查看或停止已有伴随服务；不要关闭不认识的进程。"],
     LISTEN_FAILED: ["操作系统未能监听服务地址", "确认已连接局域网，重新运行启动器选择当前地址。"],
@@ -63,7 +68,7 @@
     network_probe: "检测本机网络接口", network_inspect: "读取系统网络配置", network_report: "保存网络检测报告",
     bridge_settings: "设置本机连接", bridge_push: "扩展推送本机状态", companion_start: "启动伴随服务",
     companion_read: "读取服务缓存", companion_write: "保存服务缓存", companion_request: "处理本机请求",
-    viewer_fetch: "手机读取状态", autostart: "设置登录后启动",
+    viewer_fetch: "手机读取状态", viewer_access: "读取或保存查看权限", autostart: "设置登录后启动",
     open_portal: "打开学校首页", find_attendance: "查找考勤入口",
     open_summary: "打开月度汇总", read_summary: "读取月度汇总",
     open_swipes: "打开今日明细", read_swipes: "读取明细分页",
@@ -75,10 +80,11 @@
     create_tab: "创建采集页", get_tab: "获取采集页", navigate: "等待页面加载",
     inject_reader: "注入读取脚本", read_page: "运行页面读取脚本", advance_page: "点击分页控件",
     storage_get: "读取本机存储", storage_set: "写入本机存储", schedule: "设置刷新计划",
+    read_link: "读取手机查看链接",
     get_state: "获取小窗状态", refresh: "请求刷新", login: "打开登录页", open_portal: "打开学校系统"
   };
   const methods = ["findAttendanceUrl", "extractAttendance", "extractSwipePage", "advanceSwipePage"];
-  const errorNames = ["Error", "TypeError", "ReferenceError", "RangeError", "SyntaxError", "DOMException", "TimeoutError"];
+  const errorNames = ["Error", "TypeError", "ReferenceError", "RangeError", "SyntaxError", "DOMException", "TimeoutError", "SecurityError", "QuotaExceededError"];
   const networkCodes = ["ERR_NAME_NOT_RESOLVED", "ERR_CONNECTION_TIMED_OUT", "ERR_CONNECTION_RESET", "ERR_CONNECTION_REFUSED", "ERR_INTERNET_DISCONNECTED", "ERR_NETWORK_CHANGED", "ERR_CERT_AUTHORITY_INVALID", "ERR_CERT_DATE_INVALID", "ERR_CERT_COMMON_NAME_INVALID", "ERR_SSL_PROTOCOL_ERROR", "ERR_TUNNEL_CONNECTION_FAILED", "ERR_PROXY_CONNECTION_FAILED"];
   const systemCodes = { EACCES: "操作系统拒绝访问", EPERM: "操作系统不允许此操作", ENOSPC: "存储空间不足", EIO: "操作系统报告输入输出错误", EADDRINUSE: "地址已被占用", EADDRNOTAVAIL: "此地址当前不可用", EMFILE: "此进程已打开过多文件", ENFILE: "系统已打开过多文件", ENOENT: "所需文件或目录不存在", ECONNREFUSED: "连接被拒绝", ECONNRESET: "连接被重置", ETIMEDOUT: "连接超时", EHOSTUNREACH: "目标主机不可达", ENETUNREACH: "目标网络不可达" };
   systemCodes.EEXIST = "路径已被现有文件或目录占用";

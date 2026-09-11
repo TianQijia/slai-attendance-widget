@@ -46,6 +46,7 @@ const staticFiles = {
   "/viewer.js": ["companion/viewer.js", "text/javascript; charset=utf-8"],
   "/widget.css": ["extension/widget.css", "text/css; charset=utf-8"],
   "/view.js": ["extension/view.js", "text/javascript; charset=utf-8"],
+  "/report-utils.js": ["extension/report-utils.js", "text/javascript; charset=utf-8"],
   "/time-utils.js": ["extension/time-utils.js", "text/javascript; charset=utf-8"],
   "/state-utils.js": ["extension/state-utils.js", "text/javascript; charset=utf-8"],
   "/error-utils.js": ["extension/error-utils.js", "text/javascript; charset=utf-8"],

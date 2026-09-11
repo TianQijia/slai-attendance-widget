@@ -144,13 +144,14 @@ h2 { font-size: 17px; }
 .diagnostic-heading button { border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; background: rgba(255,255,255,.07); color: #f3faf7; cursor: pointer; }
 .diagnostic-card p { line-height: 1.6; margin: 9px 0; color: var(--muted); }
 .diagnostic-card summary { cursor: pointer; color: #ffe0a0; }
-.diagnostic-card pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.6 ui-monospace, monospace; user-select: text; }
+.diagnostic-card pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.6 ui-monospace, monospace; -webkit-user-select: text; user-select: text; }
 .copy-status { display: block; margin-top: 6px; color: var(--accent); font-size: 11px; }
 .copy-status:empty { display: none; }
 
 .month-section { margin-top: 21px; }
 .summary { color: var(--muted); font-size: 11px; }
 .day-list {
+  position: relative;
   height: 244px;
   overflow: auto;
   margin-top: 12px;
@@ -189,6 +190,17 @@ footer { padding-top: 11px; color: rgba(232,241,238,.4); font-size: 9px; }
 .shell { max-width: 640px; margin: 0 auto; }
 footer { flex-wrap: wrap; gap: 6px 12px; line-height: 1.6; }
 input { display: block; width: 100%; margin: 8px 0; padding: 10px; color: #f3faf7; background: #142220; border: 1px solid var(--border); border-radius: 8px; user-select: text; }
+input, textarea { -webkit-user-select: text; user-select: text; }
+#viewLink { font-size: 16px; }
+.remember-view { display: flex; align-items: center; gap: 8px; margin: 12px 0; line-height: 1.6; }
+.remember-view input { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; }
+.manual-copy { width: min(560px, calc(100% - 24px)); max-height: calc(100% - 24px); padding: 18px; color: #f3faf7; background: #142220; border: 1px solid var(--border); border-radius: 15px; }
+.manual-copy::backdrop { background: rgba(0,0,0,.6); }
+.manual-copy textarea { display: block; width: 100%; margin-top: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font: 16px/1.6 ui-monospace, monospace; color: #f3faf7; background: #101b1a; white-space: pre-wrap; overflow-wrap: anywhere; }
+.manual-copy p { font-size: 13px; line-height: 1.6; color: var(--muted); }
+.manual-copy button { padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; color: #f3faf7; background: #263b36; }
+#refreshView { min-height: 44px; padding: 8px 16px; border: 1px solid var(--border); border-radius: 10px; color: #f3faf7; background: #263b36; }
+button:disabled { cursor: wait; opacity: .65; }
 button { cursor: pointer; }
 .diagnostic-card button { padding: 7px 9px; color: #f3faf7; background: #263b36; border: 1px solid var(--border); border-radius: 8px; }
 @media(max-width: 370px) { .shell { padding: 16px 12px; } .today-card { gap: 12px; padding: 12px; } .progress-ring { width: 110px; height: 110px; } }

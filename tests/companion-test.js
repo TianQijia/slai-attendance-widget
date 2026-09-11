@@ -136,7 +136,10 @@ async function run() {
     await page.evaluate(() => { navigator.clipboard.writeText = async () => { throw new Error("PRIVATE_FIXTURE"); }; });
     await page.locator("#copyNetwork").click();
     assert.match(await page.locator("#networkCopyStatus").innerText(), /手动复制/);
-    assert.match(await page.evaluate(() => window.getSelection().toString()), /VIEW_UNREACHABLE/);
+    const manual = page.getByRole("textbox", { name: "可手动复制的报告" });
+    assert.match(await manual.inputValue(), /VIEW_UNREACHABLE/);
+    assert.equal(await manual.evaluate(el => el.selectionEnd - el.selectionStart), (await manual.inputValue()).length);
+    await page.getByRole("button", { name: "关闭手动复制" }).click();
     assert.deepEqual(errors, []);
     await browser.close(); browser = null;
     await fs.writeFile(path.join(dir, "attendance.json"), '{"studentName":"PRIVATE_FIXTURE"}');

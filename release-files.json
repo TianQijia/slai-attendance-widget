@@ -27,6 +27,7 @@
     "tests/swipe-fixture.js",
     "extension/bridge-utils.js",
     "extension/view.js",
+    "extension/report-utils.js",
     "runtime-downloads.json",
     "tests/time-test.js",
     "tests/companion-test.js",
@@ -53,7 +54,8 @@
     "companion/inspect-windows.ps1",
     "companion/diagnose.command",
     "companion/diagnose.cmd",
-    "tests/network-test.js"
+    "tests/network-test.js",
+    "tests/viewer-test.js"
   ],
   "archive": [
     "manifest.json",
@@ -68,7 +70,8 @@
     "LICENSE",
     "PRIVACY.md",
     "bridge-utils.js",
-    "view.js"
+    "view.js",
+    "report-utils.js"
   ],
   "companion": [
     "LICENSE",
@@ -86,6 +89,7 @@
     "extension/state-utils.js",
     "extension/error-utils.js",
     "extension/view.js",
+    "extension/report-utils.js",
     "extension/widget.css"
   ],
   "companionPlatforms": {
