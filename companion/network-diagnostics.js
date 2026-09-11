@@ -51,13 +51,15 @@ function probe({ host, port, token, write = false, expectedInstance, timeoutMs =
   });
 }
 function systemChecks(input) {
+  const issueCodes = { Denied: "NET_INSPECT_PERMISSION", CommandMissing: "NET_INSPECT_UNAVAILABLE", Failed: "NET_INSPECT_FAILED" };
+  const issue = value => Object.hasOwn(issueCodes, value) ? { code: issueCodes[value], stage: "network_inspect" } : undefined;
   const category = { Private: "NET_PROFILE_PRIVATE", Public: "NET_PROFILE_PUBLIC", DomainAuthenticated: "NET_PROFILE_DOMAIN" };
   const firewall = { On: "NET_FIREWALL_ON", Off: "NET_FIREWALL_OFF", BlockAll: "NET_FIREWALL_BLOCK_ALL" };
   const rule = { Ready: "NET_RULE_READY", Missing: "NET_RULE_MISSING", Blocked: "NET_RULE_BLOCKED", Program: "NET_RULE_PROGRAM", Scope: "NET_RULE_SCOPE" };
   const checks = [];
   if (input?.platform === "win32") checks.push({ id: "profile", code: category[input.category] || "NET_PROFILE_UNKNOWN" });
-  checks.push({ id: "firewall", code: firewall[input?.firewall] || "NET_FIREWALL_UNKNOWN", diagnostic: input?.diagnostic });
-  checks.push({ id: "rule", code: rule[input?.rule] || "NET_RULE_UNKNOWN" });
+  checks.push({ id: "firewall", code: firewall[input?.firewall] || "NET_FIREWALL_UNKNOWN", diagnostic: input?.diagnostic || issue(input?.profileIssue) });
+  checks.push({ id: "rule", code: rule[input?.rule] || "NET_RULE_UNKNOWN", diagnostic: issue(input?.ruleIssue) });
   return checks;
 }
 async function inspectSystem({ platform = process.platform, host, runtime = process.execPath, execute = execFile } = {}) {

@@ -105,6 +105,10 @@ async function run() {
     assert.equal(denied[0].code, "NET_FIREWALL_UNKNOWN"); assert.equal(denied[0].diagnostic.systemCode, "EPERM"); noPrivate(denied);
     const win = await inspectSystem({ platform: "win32", host: "10.44.0.8", execute: async () => ({ stdout: JSON.stringify({ schemaVersion: 1, category: "Public", firewall: "On", rule: "Missing", adapterName: "PRIVATE_FIXTURE" }) }) });
     assert.equal(win[0].code, "NET_PROFILE_PUBLIC"); assert.equal(win[2].code, "NET_RULE_MISSING"); noPrivate(win);
+    const queryDenied = systemChecks({ platform: "win32", profileIssue: "Denied", ruleIssue: "CommandMissing", rawError: "PRIVATE_FIXTURE" });
+    const queryReport = sanitizeReport({ platform: "win32", checks: queryDenied });
+    assert.match(reportText(queryReport), /NET_INSPECT_PERMISSION/); assert.match(reportText(queryReport), /NET_INSPECT_UNAVAILABLE/);
+    noPrivate(queryReport);
     const unknown = sanitizeReport({ checks: [{ id: "loopback", code: "PRIVATE_FIXTURE", diagnostic: { code: "NET_PROBE_FAILED", stage: "network_probe", systemCode: "PRIVATE_FIXTURE", message: "PRIVATE_FIXTURE" } }] });
     noPrivate(reportText(unknown));
     browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined });
