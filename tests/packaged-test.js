@@ -78,7 +78,13 @@ async function unpack(file, dir, names) {
     const cdp = await context.browser().newBrowserCDPSession();
     const { id } = await cdp.send("Extensions.loadUnpacked", { path: extension });
     const worker = context.serviceWorkers().find(worker => worker.url().includes(id)) || await context.waitForEvent("serviceworker");
-    await worker.evaluate(async () => { if (refreshPromise) await refreshPromise; });
+    // onInstalled awaits migration and window creation before it starts the
+    // initial school refresh. A worker being available does not mean that
+    // refreshPromise has been assigned yet, especially on Windows runners.
+    // Wait for a terminal startup result before publishing our bridge fixture.
+    await until(() => worker.evaluate(async () =>
+      (await getState()).status !== "loading" && refreshPromise === null
+    ), 35000);
     const page = await context.newPage(); await page.goto(`chrome-extension://${id}/widget.html`);
     await page.locator("#bridgeSettings summary").click();
     await page.locator("#bridgeToken").fill(config.writeToken);
