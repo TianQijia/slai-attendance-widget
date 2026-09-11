@@ -4,6 +4,8 @@ let ticker = null;
 
 const $ = (id) => document.getElementById(id);
 const { localDateKey, secondsFromDuration, attendanceSeconds } = globalThis.__slaiTime;
+const { sanitizeState } = globalThis.__slaiState;
+const { diagnoseError, describeDiagnostic, diagnosticReport } = globalThis.__slaiErrors;
 
 function shortDuration(seconds, empty = "0 分钟") {
   const safe = Math.max(0, Math.round(seconds));
@@ -38,9 +40,11 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-function formatUpdated(value) {
+function formatUpdated(state) {
+  const summaryOnly = state.summaryUpdatedAt && (!state.updatedAt || Date.parse(state.summaryUpdatedAt) > Date.parse(state.updatedAt));
+  const value = summaryOnly ? state.summaryUpdatedAt : state.updatedAt;
   if (!value) return "尚未更新";
-  return `更新于 ${new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date(value))}`;
+  return `${summaryOnly ? "汇总更新于" : "更新于"} ${new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date(value))}`;
 }
 
 function formatMonth(value) {
@@ -114,7 +118,7 @@ function renderToday(state) {
   $("remaining").parentElement.classList.toggle("done", complete);
   $("progressRing").style.setProperty("--progress", `${progress * 360}deg`);
   $("monthTitle").textContent = formatMonth(state.month);
-  $("updatedAt").textContent = formatUpdated(state.updatedAt);
+  $("updatedAt").textContent = formatUpdated(state);
 
   const statusDot = $("statusDot");
   statusDot.className = "status-dot";
@@ -130,14 +134,46 @@ function renderToday(state) {
 }
 
 function render(state) {
+  state = sanitizeState(state);
   currentState = state;
   $("todayLabel").textContent = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date());
   renderToday(state);
   $("monthTitle").textContent = formatMonth(state.month);
-  $("updatedAt").textContent = formatUpdated(state.updatedAt);
+  $("updatedAt").textContent = formatUpdated(state);
   $("authCard").classList.toggle("hidden", state.status !== "auth");
   renderDays(state);
+  renderDiagnostic(state);
   updateNextRefresh();
+}
+
+function renderDiagnostic(state) {
+  $("diagnosticCard").classList.toggle("hidden", !state.diagnostic);
+  $("copyStatus").textContent = "";
+  if (!state.diagnostic) {
+    $("diagnosticReport").textContent = "";
+    return;
+  }
+  let version = "";
+  try { version = chrome.runtime.getManifest?.().version || ""; } catch { /* Old window after extension reload. */ }
+  $("diagnosticAction").textContent = describeDiagnostic(state.diagnostic).action;
+  $("diagnosticReport").textContent = diagnosticReport(state.diagnostic, { version, status: state.status });
+}
+
+async function copyDiagnostic() {
+  const report = $("diagnosticReport").textContent;
+  if (!report) return;
+  try {
+    await navigator.clipboard.writeText(report);
+    $("copyStatus").textContent = "已复制排错信息";
+  } catch {
+    $("diagnosticDetails").open = true;
+    const range = document.createRange();
+    range.selectNodeContents($("diagnosticReport"));
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    $("copyStatus").textContent = "浏览器未允许自动复制，请手动复制已选中的信息。";
+  }
 }
 
 function updateNextRefresh() {
@@ -152,7 +188,15 @@ function updateNextRefresh() {
 }
 
 async function send(type) {
-  return chrome.runtime.sendMessage({ type });
+  try {
+    const response = await chrome.runtime.sendMessage({ type });
+    if (!response) throw Object.assign(new Error("No background response"), { code: "WIDGET_DISCONNECTED" });
+    if (response.ok === false) render({ ...currentState, status: "error", diagnostic: response.diagnostic || diagnoseError(null, { stage: "widget_request" }) });
+    return response;
+  } catch (error) {
+    render({ ...currentState, status: "error", diagnostic: diagnoseError(error, { stage: "widget_request", operation: type.replaceAll("-", "_") }) });
+    return null;
+  }
 }
 
 async function refresh() {
@@ -171,10 +215,11 @@ async function refresh() {
 $("refresh").addEventListener("click", refresh);
 $("login").addEventListener("click", () => send("login"));
 $("openPortal").addEventListener("click", () => send("open-portal"));
+$("copyDiagnostic").addEventListener("click", copyDiagnostic);
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === "attendance-state" && message.state) render(message.state);
 });
 
-send("get-state").then((response) => render(response?.state || {}));
+send("get-state").then((response) => { if (response?.state) render(response.state); });
 ticker = setInterval(updateNextRefresh, 1000);

@@ -1,14 +1,14 @@
 {
   "source": [
-    ".gitignore", "LICENSE", "README.md", "PRIVACY.md", "CHANGELOG.md",
+    ".gitignore", "AGENTS.md", "LICENSE", "README.md", "PRIVACY.md", "CHANGELOG.md",
     "package.json", "package-lock.json", "release-files.json", "docs/demo.png",
-    "extension/manifest.json", "extension/background.js", "extension/state-utils.js",
+    "extension/manifest.json", "extension/background.js", "extension/error-utils.js", "extension/state-utils.js",
     "extension/page-reader.js", "extension/time-utils.js", "extension/widget.js",
     "extension/widget.html", "extension/widget.css",
-    "scripts/audit.js", "scripts/build.js", "tests/run-tests.js", "tests/install-test.js"
+    "scripts/audit.js", "scripts/build.js", "tests/run-tests.js", "tests/install-test.js", "tests/swipe-fixture.js"
   ],
   "archive": [
-    "manifest.json", "background.js", "state-utils.js", "page-reader.js",
+    "manifest.json", "background.js", "error-utils.js", "state-utils.js", "page-reader.js",
     "time-utils.js", "widget.js", "widget.html", "widget.css", "LICENSE", "PRIVACY.md"
   ]
 }

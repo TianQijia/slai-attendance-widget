@@ -50,6 +50,19 @@
         <button id="login">去登录</button>
       </section>
 
+      <section class="diagnostic-card hidden" id="diagnosticCard" aria-label="排错信息">
+        <div class="diagnostic-heading">
+          <strong>排错信息</strong>
+          <button id="copyDiagnostic" type="button">复制排错信息</button>
+        </div>
+        <p id="diagnosticAction"></p>
+        <details id="diagnosticDetails">
+          <summary>查看错误代码和现场细节</summary>
+          <pre id="diagnosticReport"></pre>
+        </details>
+        <span class="copy-status" id="copyStatus" role="status"></span>
+      </section>
+
       <section class="month-section">
         <div class="section-heading">
           <div>
@@ -70,6 +83,8 @@
         <span id="nextRefresh">每 30 分钟自动刷新</span>
       </footer>
     </main>
+    <script src="error-utils.js"></script>
+    <script src="state-utils.js"></script>
     <script src="time-utils.js"></script>
     <script src="widget.js"></script>
   </body>

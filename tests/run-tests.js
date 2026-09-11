@@ -4,13 +4,16 @@ const path = require("node:path");
 const vm = require("node:vm");
 const { pathToFileURL } = require("node:url");
 const { chromium } = require("playwright");
+const { swipeData, swipeHtml } = require("./swipe-fixture");
 process.env.TZ = "Asia/Shanghai";
 const root = path.resolve(__dirname, "..");
 const extension = path.join(root, "extension");
 require(path.join(extension, "time-utils.js"));
+require(path.join(extension, "error-utils.js"));
 require(path.join(extension, "state-utils.js"));
 const { attendanceSeconds } = globalThis.__slaiTime;
 const { sanitizeState } = globalThis.__slaiState;
+const { diagnoseError, diagnosticReport } = globalThis.__slaiErrors;
 const day = "2030-04-08";
 const instant = (clock) => new Date(`${day}T${clock}+08:00`).getTime();
 const swipe = (clock, direction) => ({ timestamp: `${day} ${clock}`, direction });
@@ -37,7 +40,7 @@ function testTimeAndPrivacy() {
   assert.equal(attendanceSeconds(fixtureState, new Date("2030-04-09T00:00:00+08:00").getTime()).seconds, 0);
   const dirty = {
     ...fixtureState, studentNumber: "000000000", studentName: "DEMO_ONLY",
-    sourceUrl: "https://example.invalid/private", message: "PRIVATE_FIXTURE",
+    sourceUrl: "https://example.invalid/private", message: "PRIVATE_FIXTURE", errorCode: "PRIVATE_FIXTURE",
     days: [{ ...fixtureState.days[1], extra: "PRIVATE_FIXTURE" }],
     todaySwipes: [{ ...swipe("06:00:00", "进门"), channel: "PRIVATE_FIXTURE" }]
   };
@@ -46,6 +49,27 @@ function testTimeAndPrivacy() {
   assert(!("studentNumber" in clean) && !("sourceUrl" in clean));
   assert.equal(clean.requiredSeconds, 21600);
   assert.deepEqual(sanitizeState({ days: [null], todaySwipes: [null] }).days, []);
+  const partial = sanitizeState({ ...fixtureState, status: "partial", errorCode: "SWIPE_TIMEOUT" });
+  assert.deepEqual(partial.todaySwipes, []);
+  assert.match(partial.message, /超时.*学校汇总/);
+  assert.equal(attendanceSeconds({ ...fixtureState, status: "partial" }, instant("12:00:00")).seconds, 7200);
+  const diagnostic = diagnoseError(Object.assign(new TypeError("PRIVATE_FIXTURE https://example.invalid/session"), {
+    code: "SWIPE_INCOMPLETE", details: { stage: "read_swipes", page: 2, rowsRead: 10, expectedTotal: 23,
+      sourceUrl: "PRIVATE_FIXTURE", studentNumber: "000000000", message: "PRIVATE_FIXTURE", readerMethod: "PRIVATE_FIXTURE" }
+  }));
+  const storedError = sanitizeState({ ...fixtureState, status: "partial", diagnostic });
+  assert.match(storedError.message, /10 \/ 23 条/);
+  assert.equal(storedError.diagnostic.page, 2);
+  const report = diagnosticReport(storedError.diagnostic, { version: require("../package.json").version, status: "partial" });
+  assert.match(report, /失败阶段：读取明细分页/);
+  assert.match(report, /异常类型：TypeError/);
+  assert.match(report, /错误代码：SWIPE_INCOMPLETE/);
+  assert(!/PRIVATE_FIXTURE|example.invalid|000000000|sourceUrl/.test(report + JSON.stringify(storedError)));
+  assert.equal(sanitizeState({ ...storedError, status: "ok" }).diagnostic, null, "Success removes old diagnostics");
+  const unknown = diagnoseError(new TypeError("PRIVATE_FIXTURE"), { stage: "find_attendance" });
+  assert.match(diagnosticReport(unknown), /直接原因尚未识别/);
+  assert.equal(unknown.stage, "find_attendance");
+  assert.equal(unknown.errorName, "TypeError");
 }
 
 async function testBackground() {
@@ -75,8 +99,18 @@ async function testBackground() {
       action: { onClicked: event("clicked") }, windows: { onRemoved: event("windowRemoved") }
     }
   });
-  context.importScripts = (name) => vm.runInContext(fs.readFileSync(path.join(extension, name), "utf8"), context);
+  context.importScripts = (...names) => names.forEach(name => vm.runInContext(fs.readFileSync(path.join(extension, name), "utf8"), context));
   vm.runInContext(fs.readFileSync(path.join(extension, "background.js"), "utf8"), context);
+  const originalReader = context.runReader;
+  const originalGetTab = context.chrome.tabs.get;
+  context.chrome.tabs.get = async () => ({ id: 8, status: "complete", url: "about:blank", pendingUrl: "https://stu.slai.edu.cn/" });
+  let navigationSettled = false;
+  const navigation = vm.runInContext("waitForTab(8)", context).then(tab => { navigationSettled = true; return tab; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(navigationSettled, false, "A new tab's pending navigation must not be classified as an unexpected redirect");
+  callbacks.tabUpdated(8, { status: "complete" }, { id: 8, status: "complete", url: "https://stu.slai.edu.cn/" });
+  assert.equal((await navigation).url, "https://stu.slai.edu.cn/");
+  context.chrome.tabs.get = originalGetTab;
   await vm.runInContext("migrateStorage()", context);
   assert(!JSON.stringify(storage).includes("PRIVATE_FIXTURE"));
   await vm.runInContext("saveState({ status: 'ok' })", context);
@@ -84,6 +118,7 @@ async function testBackground() {
   await vm.runInContext("refreshAttendance()", context);
   assert.equal(storage.attendanceState.status, "auth");
   assert.equal(storage.attendanceState.nextRefreshAt, null);
+  assert.equal(storage.attendanceState.diagnostic.code, "AUTH_EXPIRED");
   assert.equal(removed.at(-1), "slai-attendance-refresh");
   const beforeAlarm = createdTabs;
   await callbacks.alarm({ name: "slai-attendance-refresh" });
@@ -93,17 +128,75 @@ async function testBackground() {
   assert.equal(storage.attendanceState.status, "error");
   assert(!JSON.stringify(storage).includes("PRIVATE_FIXTURE"));
   assert.equal(callbacks.message({ type: "refresh" }, { id: "fixture-extension", url: "https://stu.slai.edu.cn/" }, () => {}), false);
+
+  // An error after the summary succeeds must leave a usable, clearly partial UI.
+  let tabUrl = "https://stu.slai.edu.cn/a/edu/acm/swipe/attendList";
+  context.chrome.tabs.get = async () => ({ id: 8, status: "complete", url: tabUrl });
+  context.chrome.tabs.update = async (_id, update) => { tabUrl = update.url; };
+  context.runReader = async (_id, method) => method === "findAttendanceUrl" ? "https://stu.slai.edu.cn/a/edu/acm/swipe/attendList" :
+    { month: fixtureState.month, days: fixtureState.days, studentNumber: "000000000" };
+  const lastSuccess = fixtureState.updatedAt;
+  storage.attendanceState = structuredClone(fixtureState);
+  context.collectSwipePages = async () => { throw Object.assign(new Error("PRIVATE_FIXTURE"), { code: "SWIPE_INCOMPLETE" }); };
+  await vm.runInContext("scrapeAttendance({ sourceTabId: 8 })", context);
+  assert.equal(storage.attendanceState.status, "partial");
+  assert.equal(storage.attendanceState.errorCode, "SWIPE_INCOMPLETE");
+  assert.deepEqual(storage.attendanceState.days, sanitizeState(fixtureState).days);
+  assert.deepEqual(storage.attendanceState.todaySwipes, []);
+  assert.equal(storage.attendanceState.updatedAt, lastSuccess, "Partial reads do not advance the last full success timestamp");
+  assert(storage.attendanceState.summaryUpdatedAt);
+  assert.match(storage.attendanceState.message, /条数不齐.*学校汇总/);
+  assert(!JSON.stringify(storage).includes("PRIVATE_FIXTURE"));
+  assert.equal(alarms.at(-1).delayInMinutes, 30);
+  context.collectSwipePages = async () => { throw Object.assign(new Error("PRIVATE_FIXTURE"), { code: "AUTH_EXPIRED" }); };
+  await vm.runInContext("scrapeAttendance({ sourceTabId: 8 })", context);
+  assert.equal(storage.attendanceState.status, "auth");
+  assert.equal(storage.attendanceState.nextRefreshAt, null);
+
+  context.runReader = async () => null;
+  await vm.runInContext("scrapeAttendance({ sourceTabId: 8 })", context);
+  assert.equal(storage.attendanceState.errorCode, "ATTENDANCE_LINK_MISSING");
+  assert.equal(storage.attendanceState.diagnostic.stage, "find_attendance");
+  assert.match(storage.attendanceState.message, /未找到.*考勤统计查询/);
+
+  context.runReader = async (_id, method) => method === "findAttendanceUrl" ? "https://stu.slai.edu.cn/a/edu/acm/swipe/attendList" :
+    { month: fixtureState.month, days: fixtureState.days, studentNumber: "" };
+  await vm.runInContext("scrapeAttendance({ sourceTabId: 8 })", context);
+  assert.equal(storage.attendanceState.status, "partial");
+  assert.equal(storage.attendanceState.errorCode, "STUDENT_NUMBER_MISSING", "Missing query identity cannot be reported as full success");
+
+  context.chrome.scripting = { executeScript: async () => { throw new Error("Cannot access contents of url https://example.invalid/PRIVATE_FIXTURE. Extension manifest must request permission"); } };
+  await assert.rejects(originalReader(8, "extractSwipePage"), error => {
+    const diagnostic = diagnoseError(error, { stage: "read_swipes" });
+    assert.equal(diagnostic.code, "SCRIPT_PERMISSION");
+    assert.equal(diagnostic.operation, "inject_reader");
+    assert.equal(diagnostic.readerMethod, "extractSwipePage");
+    assert(!JSON.stringify(diagnostic).includes("PRIVATE_FIXTURE"));
+    return true;
+  });
+  context.chrome.storage.local.get = async () => { throw new Error("PRIVATE_FIXTURE"); };
+  const reply = await new Promise(resolve => callbacks.message({ type: "get-state" },
+    { id: "fixture-extension", url: "chrome-extension://fixture-extension/widget.html" }, resolve));
+  assert.equal(reply.ok, false);
+  assert.equal(reply.diagnostic.code, "STORAGE_READ_FAILED", "Storage failures must answer the UI instead of leaving it waiting");
+  assert.equal(reply.diagnostic.stage, "read_cache");
+  assert(!JSON.stringify(reply).includes("PRIVATE_FIXTURE"));
 }
 
 async function main() {
   testTimeAndPrivacy();
   await testBackground();
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined });
   try {
     const context = await browser.newContext({ timezoneId: "Asia/Shanghai", viewport: { width: 410, height: 640 } });
     const unexpected = [];
     await context.route("**/*", async (route) => {
-      if (route.request().url().startsWith("https://stu.slai.edu.cn/")) {
+      const url = new URL(route.request().url());
+      if (url.origin === "https://stu.slai.edu.cn" && url.pathname === "/a/edu/acm/swipe/list") {
+        // Keep the old table visible briefly after the page indicator advances.
+        await new Promise(resolve => setTimeout(resolve, 300));
+        await route.fulfill({ json: swipeData(Number(url.searchParams.get("pageNo"))) });
+      } else if (route.request().url().startsWith("https://stu.slai.edu.cn/")) {
         await route.fulfill({ contentType: "text/html; charset=utf-8", body: route.request().url().includes("/sys/user/main") ? "<p>演示首页</p>" : '<iframe src="/a;JSESSIONID=test-session/sys/user/main"></iframe><a onclick="addTabs({url: \'/edu/acm/swipe/attendList\'})">学生考勤统计查询</a>' });
       } else if (route.request().url().startsWith("file:")) await route.continue();
       else { unexpected.push(route.request().url()); await route.abort(); }
@@ -141,7 +234,7 @@ async function main() {
     });
     const listener = { addListener() {}, removeListener() {} };
     const paginationContext = vm.createContext({ URL, Date, setTimeout, clearTimeout,
-      importScripts() {}, __slaiState: { sanitizeState },
+      importScripts() {}, __slaiState: { sanitizeState }, __slaiErrors: globalThis.__slaiErrors,
       chrome: { runtime: { onInstalled: listener, onStartup: listener, onMessage: listener },
         alarms: { onAlarm: listener }, action: { onClicked: listener }, windows: { onRemoved: listener },
         tabs: { onUpdated: listener, get: async () => ({ status: 'complete', url: 'https://stu.slai.edu.cn/a/edu/acm/swipe/list' }) } }
@@ -152,22 +245,70 @@ async function main() {
     assert.equal(threeVisits.length, 6);
     assert.equal(attendanceSeconds({ days: [], todaySwipes: threeVisits }, instant('12:00:00')).seconds, 10800);
     await page.evaluate(() => { renderSwipeFixture(1); document.querySelector('.pagination').remove(); });
-    await assert.rejects(vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext), /未读取完整/);
+    await assert.rejects(vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext), error => {
+      assert.equal(error.code, "SWIPE_INCOMPLETE");
+      assert.equal(error.details.rowsRead, 3);
+      assert.equal(error.details.expectedTotal, 7);
+      assert.equal(error.details.page, 1);
+      return true;
+    });
     await page.evaluate(() => { renderSwipeFixture(1); document.querySelector('.pagination a').setAttribute('href', 'https://example.invalid/'); });
     assert.equal(await page.evaluate(() => __slaiAttendance.advanceSwipePage()), false);
+    await page.setContent(swipeHtml());
+    const layui = await page.evaluate(() => __slaiAttendance.extractSwipePage());
+    assert.equal(layui.pagination.hasNext, true, "Layui's icon-only next button must be recognized");
+    assert.equal(layui.pagination.rowCount, 10, "Ignore the table's fixed-column copies");
+    const layuiVisits = await vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext);
+    assert.equal(layuiVisits.length, 6);
+    assert.equal(attendanceSeconds({ days: [], todaySwipes: layuiVisits }, instant('12:00:00')).seconds, 10800);
+    const lastPage = await page.evaluate(() => __slaiAttendance.extractSwipePage());
+    assert.equal(lastPage.pagination.current, 3, "Read Layui's current page when hidden fields are blank");
+    assert.equal(lastPage.pagination.hasNext, false, "Layui's disabled next button must stop collection");
+    assert.equal(await page.evaluate(() => __slaiAttendance.advanceSwipePage()), false);
     await page.close();
+
+    let readerCalls = 0;
+    paginationContext.runReader = async () => { readerCalls++; throw new Error("Cannot access contents of url https://example.invalid/PRIVATE_FIXTURE"); };
+    await assert.rejects(vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext), error => {
+      const diagnostic = diagnoseError(error);
+      assert.equal(diagnostic.code, "SCRIPT_PERMISSION", "A permission failure must not become a timeout");
+      assert.equal(diagnostic.page, 1);
+      assert.equal(diagnostic.stage, "read_swipes");
+      return true;
+    });
+    assert.equal(readerCalls, 1);
+    let virtualNow = 0;
+    paginationContext.Date = class extends Date { static now() { return virtualNow; } };
+    paginationContext.delay = async ms => { virtualNow += ms; };
+    paginationContext.runReader = async () => { throw new Error("Execution context was destroyed, PRIVATE_FIXTURE"); };
+    await assert.rejects(vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext), error => {
+      const diagnostic = diagnoseError(error);
+      assert.equal(diagnostic.code, "SCRIPT_CONTEXT_LOST", "Repeated context loss retains its cause after retries");
+      assert.equal(diagnostic.timeoutMs, 15000);
+      assert(!JSON.stringify(diagnostic).includes("PRIVATE_FIXTURE"));
+      return true;
+    });
 
     const ui = await context.newPage();
     await ui.clock.install({ time: new Date("2030-04-08T10:00:00+08:00") });
     await ui.clock.pauseAt(new Date("2030-04-08T10:00:01+08:00"));
-    await ui.addInitScript((state) => {
+    await ui.addInitScript(({ state, version }) => {
       window.fixtureState = state;
       window.messages = [];
       window.chrome = { runtime: {
-        sendMessage: async (message) => { window.messages.push(message.type); return { state: window.fixtureState }; },
+        getManifest: () => ({ version }),
+        sendMessage: async (message) => {
+          window.messages.push(message.type);
+          if (window.failRequest) throw new Error("Could not establish connection. Receiving end does not exist. PRIVATE_FIXTURE");
+          return { state: window.fixtureState };
+        },
         onMessage: { addListener: (fn) => { window.deliverState = fn; } }
       } };
-    }, sanitizeState(fixtureState));
+      Object.defineProperty(navigator, "clipboard", { value: { writeText: async text => {
+        if (window.failCopy) throw new Error("Simulated clipboard refusal");
+        window.copiedReport = text;
+      } } });
+    }, { state: sanitizeState(fixtureState), version: require("../package.json").version });
     await ui.goto(pathToFileURL(path.join(extension, "widget.html")).href);
     await ui.waitForFunction(() => document.querySelector("#todayDuration").textContent === "03:00:01");
     await ui.clock.runFor(2000);
@@ -196,8 +337,43 @@ async function main() {
     await ui.evaluate(() => window.deliverState({ type: "attendance-state", state: { status: "auth", message: "请登录学校系统", days: [], nextRefreshAt: null } }));
     assert.equal(await ui.locator("#authCard").isVisible(), true);
     assert.match(await ui.locator("#nextRefresh").innerText(), /自动刷新已暂停/);
+    await ui.evaluate((state) => window.deliverState({ type: "attendance-state", state }), sanitizeState({
+      ...fixtureState, status: "partial", diagnostic: {
+        code: "SWIPE_TIMEOUT", stage: "read_swipes", page: 2, currentPage: 1, rowsRead: 10, expectedTotal: 23, timeoutMs: 15000,
+        occurredAt: "2030-04-08T02:10:00.000Z", message: "PRIVATE_FIXTURE", sourceUrl: "https://example.invalid/PRIVATE_FIXTURE"
+      }, summaryUpdatedAt: "2030-04-08T02:10:00.000Z"
+    }));
+    assert.equal(await ui.locator("#todayDuration").innerText(), "02:00:00");
+    assert.equal(await ui.locator(".day-row").count(), 2);
+    assert.match(await ui.locator("#updatedAt").innerText(), /汇总更新于/);
+    assert.match(await ui.locator("#statusText").innerText(), /超时.*学校汇总/);
+    await ui.clock.runFor(2000);
+    assert.equal(await ui.locator("#todayDuration").innerText(), "02:00:00");
+    assert.equal(await ui.locator("#diagnosticCard").isVisible(), true);
+    await ui.locator("#copyDiagnostic").click();
+    const copiedReport = await ui.evaluate(() => window.copiedReport);
+    assert.match(copiedReport, /目标页：第 2 页/);
+    assert.match(copiedReport, /已读取：10 条/);
+    assert.match(copiedReport, /预期总数：23 条/);
+    assert.match(copiedReport, /等待上限：15 秒/);
+    assert(!copiedReport.includes("PRIVATE_FIXTURE"));
+    assert.match(await ui.locator("#copyStatus").innerText(), /已复制/);
+    await ui.evaluate(() => { window.failCopy = true; });
+    await ui.locator("#copyDiagnostic").click();
+    assert.match(await ui.locator("#copyStatus").innerText(), /手动复制/);
+    assert.equal(await ui.evaluate(() => window.getSelection().toString()), copiedReport);
+    await ui.screenshot({ path: path.join(root, "test-results", "summary-fallback.png"), fullPage: true });
+    await ui.evaluate(() => { window.failRequest = true; });
+    await ui.locator("#refresh").click();
+    assert.match(await ui.locator("#statusText").innerText(), /后台.*连接已断开/);
+    assert.match(await ui.locator("#diagnosticReport").innerText(), /WIDGET_DISCONNECTED/);
+    assert.equal(await ui.locator("#refresh").isEnabled(), true);
+    assert.doesNotMatch(await ui.locator("body").innerText(), /PRIVATE_FIXTURE/);
+    await ui.evaluate(() => { window.failRequest = false; });
+    await ui.locator("#refresh").click();
+    assert.equal(await ui.locator("#diagnosticCard").isVisible(), false, "Recovery removes stale error details");
     assert.deepEqual(unexpected, [], "No unexpected network requests during tests");
-    console.log("Passed: pagination across three visits and dorm-only page, incomplete-page rejection, privacy, 30-minute scheduling, auth pause, gate filtering and live UI.");
+    console.log("Passed: 23-row pagination, summary fallback, direct error causes and context, privacy, clipboard success/fallback, background disconnect/recovery, pending navigation, scheduling, auth pause and live UI.");
   } finally {
     await browser.close();
   }

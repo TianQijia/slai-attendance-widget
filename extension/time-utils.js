@@ -22,6 +22,7 @@
     const today = localDateKey(new Date(now));
     const todayRecord = (state.days || []).find((day) => day.date === today);
     const portalSeconds = secondsFromDuration(todayRecord?.duration);
+    if (state.status === "partial") return { seconds: portalSeconds, onCampus: false, enteredAt: null };
     const swipes = (state.todaySwipes || [])
       .filter((record) => record.timestamp?.startsWith(today))
       .slice()

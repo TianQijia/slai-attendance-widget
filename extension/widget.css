@@ -138,6 +138,16 @@ h2 { font-size: 17px; }
 }
 .hidden { display: none; }
 
+.diagnostic-card { margin-top: 12px; padding: 13px 14px; border: 1px solid rgba(255,202,103,.22); border-radius: 15px; background: rgba(255,202,103,.055); font-size: 12px; }
+.diagnostic-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.diagnostic-heading strong { color: #ffe0a0; }
+.diagnostic-heading button { border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; background: rgba(255,255,255,.07); color: #f3faf7; cursor: pointer; }
+.diagnostic-card p { line-height: 1.6; margin: 9px 0; color: var(--muted); }
+.diagnostic-card summary { cursor: pointer; color: #ffe0a0; }
+.diagnostic-card pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.6 ui-monospace, monospace; user-select: text; }
+.copy-status { display: block; margin-top: 6px; color: var(--accent); font-size: 11px; }
+.copy-status:empty { display: none; }
+
 .month-section { margin-top: 21px; }
 .summary { color: var(--muted); font-size: 11px; }
 .day-list {

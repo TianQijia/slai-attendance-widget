@@ -1,5 +1,6 @@
-importScripts("state-utils.js");
+importScripts("error-utils.js", "state-utils.js");
 const { sanitizeState } = globalThis.__slaiState;
+const { diagnoseError } = globalThis.__slaiErrors;
 const PORTAL_URL = "https://stu.slai.edu.cn/";
 const REFRESH_ALARM = "slai-attendance-refresh";
 const REFRESH_MINUTES = 30;
@@ -28,8 +29,12 @@ function stateWithSchedule(state) {
 }
 
 async function getState() {
-  const stored = await chrome.storage.local.get(STATE_KEY);
-  return sanitizeState(stored[STATE_KEY] || defaultState());
+  try {
+    const stored = await chrome.storage.local.get(STATE_KEY);
+    return sanitizeState(stored[STATE_KEY] || defaultState());
+  } catch (error) {
+    throw readerError("STORAGE_READ_FAILED", "无法读取本机缓存", { stage: "read_cache", operation: "storage_get" });
+  }
 }
 
 async function migrateStorage() {
@@ -43,13 +48,21 @@ async function migrateStorage() {
 
 async function saveState(state) {
   const next = sanitizeState(stateWithSchedule(state));
-  if (next.status === "auth") {
-    next.nextRefreshAt = null;
-    await chrome.alarms.clear(REFRESH_ALARM);
-  } else {
-    await chrome.alarms.create(REFRESH_ALARM, { delayInMinutes: REFRESH_MINUTES });
+  try {
+    if (next.status === "auth") {
+      next.nextRefreshAt = null;
+      await chrome.alarms.clear(REFRESH_ALARM);
+    } else {
+      await chrome.alarms.create(REFRESH_ALARM, { delayInMinutes: REFRESH_MINUTES });
+    }
+  } catch {
+    throw readerError("SCHEDULE_FAILED", "无法设置自动刷新", { operation: "schedule" });
   }
-  await chrome.storage.local.set({ [STATE_KEY]: next });
+  try {
+    await chrome.storage.local.set({ [STATE_KEY]: next });
+  } catch {
+    throw readerError("STORAGE_WRITE_FAILED", "无法保存考勤结果", { stage: "save_state", operation: "storage_set" });
+  }
   chrome.runtime.sendMessage({ type: "attendance-state", state: next }).catch(() => {});
   return next;
 }
@@ -85,7 +98,8 @@ function waitForTab(tabId, expectedUrlPart = "slai.edu.cn", timeoutMs = 30000) {
     const isExpected = (tab) =>
       tab?.status === "complete" &&
       typeof tab.url === "string" &&
-      (!expectedUrlPart || tab.url.includes(expectedUrlPart));
+      !tab.pendingUrl && tab.url !== "about:blank" &&
+      (!expectedUrlPart || tab.url.includes(expectedUrlPart) || isAuthUrl(tab.url) || !isPortalUrl(tab.url));
     const finish = (callback, value) => {
       if (settled) return;
       settled = true;
@@ -98,36 +112,57 @@ function waitForTab(tabId, expectedUrlPart = "slai.edu.cn", timeoutMs = 30000) {
       if (updatedTabId === tabId && changeInfo.status === "complete" && isExpected(tab)) finish(resolve, tab);
     };
     const onRemoved = (removedTabId) => {
-      if (removedTabId === tabId) finish(reject, new Error("采集页已关闭"));
+      if (removedTabId === tabId) finish(reject, readerError("TAB_CLOSED", "采集页已关闭", { operation: "navigate" }));
     };
-    const timer = setTimeout(() => finish(reject, new Error("学校页面加载超时")), timeoutMs);
+    const timer = setTimeout(() => finish(reject, readerError("PAGE_TIMEOUT", "学校页面加载超时", { operation: "navigate", timeoutMs })), timeoutMs);
     chrome.tabs.onUpdated.addListener(onUpdated);
     chrome.tabs.onRemoved.addListener(onRemoved);
 
     chrome.tabs.get(tabId).then((tab) => {
       if (isExpected(tab)) finish(resolve, tab);
-    }).catch((error) => finish(reject, error));
+    }).catch((error) => finish(reject, withErrorDetails(error, { operation: "get_tab" })));
   });
 }
 
 async function runReader(tabId, method) {
-  await chrome.scripting.executeScript({ target: { tabId }, files: ["page-reader.js"] });
-  const result = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (methodName) => globalThis.__slaiAttendance?.[methodName]?.() ?? null,
-    args: [method]
-  });
-  return result[0]?.result ?? null;
+  let operation = "inject_reader";
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ["page-reader.js"] });
+    operation = method === "advanceSwipePage" ? "advance_page" : "read_page";
+    const result = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (methodName) => globalThis.__slaiAttendance?.[methodName]?.() ?? null,
+      args: [method]
+    });
+    return result[0]?.result ?? null;
+  } catch (error) {
+    throw withErrorDetails(error, { operation, readerMethod: method });
+  }
 }
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+function readerError(code, message, details = {}) {
+  return Object.assign(new Error(message), { code, details });
+}
+
+function withErrorDetails(error, details) {
+  const wrapped = new Error(typeof error?.message === "string" ? error.message : "Unknown error");
+  return Object.assign(wrapped, { name: error?.name || "Error", code: error?.code, details: { ...details, ...error?.details } });
+}
+
+function requirePortal(tab, code = "PORTAL_URL") {
+  if (isAuthUrl(tab?.url)) throw readerError("AUTH_EXPIRED", "登录已过期");
+  if (!isPortalUrl(tab?.url)) throw readerError(code, "学校页面地址无效");
+}
+
 async function waitForReader(tabId, method, accept, timeoutMs = 10000) {
   const deadline = Date.now() + timeoutMs;
   let value = null;
   do {
+    requirePortal(await chrome.tabs.get(tabId));
     value = await runReader(tabId, method);
     if (accept(value)) return value;
     await delay(250);
@@ -144,48 +179,69 @@ async function collectSwipePages(tabId, queryDate) {
   for (let index = 0; index < 50; index++) {
     const deadline = Date.now() + 15000;
     let page = null;
+    let lastReaderError = null;
+    const details = { stage: "read_swipes", page: index + 1, rowsRead, expectedTotal, timeoutMs: 15000 };
     do {
-      const tab = await chrome.tabs.get(tabId);
-      if (isAuthUrl(tab.url)) throw Object.assign(new Error('登录已过期'), { code: 'AUTH_EXPIRED' });
-      if (!isPortalUrl(tab.url)) throw new Error('刷卡页面地址无效');
+      let tab;
+      try {
+        tab = await chrome.tabs.get(tabId);
+        requirePortal(tab, "SWIPE_URL");
+      } catch (error) {
+        throw withErrorDetails(error, { ...details, operation: "get_tab" });
+      }
       if (tab.status === 'complete') {
         try {
           const candidate = await runReader(tabId, 'extractSwipePage');
+          lastReaderError = null;
+          if (candidate?.pagination) details.currentPage = candidate.pagination.current;
           if (candidate?.ready && candidate.pagination && (!previous ||
             (candidate.pagination.current === previous.current + 1 && candidate.pagination.signature !== previous.signature))) {
             page = candidate;
             break;
           }
-        } catch { /* Navigation can briefly destroy the reader's execution context. */ }
+        } catch (error) {
+          // Retry destroyed navigation contexts, but keep the actual exception.
+          const diagnostic = diagnoseError(error);
+          if (diagnostic.code !== "SCRIPT_CONTEXT_LOST") throw withErrorDetails(error, details);
+          lastReaderError = error;
+        }
       }
       await delay(250);
     } while (Date.now() < deadline);
-    if (!page) throw new Error('刷卡分页读取未完成');
+    if (!page) throw lastReaderError ? withErrorDetails(lastReaderError, details) : readerError('SWIPE_TIMEOUT', '刷卡分页读取未完成', details);
     const meta = page.pagination;
-    if (visited.has(meta.signature) || (index === 0 && meta.current !== 1)) throw new Error('刷卡分页重复');
+    const pageDetails = { ...details, currentPage: meta.current, actualTotal: meta.total };
+    if (visited.has(meta.signature) || (index === 0 && meta.current !== 1)) throw readerError('SWIPE_DUPLICATE', '刷卡分页重复', pageDetails);
     visited.add(meta.signature);
     if (expectedTotal === null) expectedTotal = meta.total;
-    if (expectedTotal !== meta.total) throw new Error('刷卡记录在读取期间变化');
+    if (expectedTotal !== meta.total) throw readerError('SWIPE_CHANGED', '刷卡记录在读取期间变化', pageDetails);
     rowsRead += meta.rowCount;
     for (const record of page.records) {
       if (record.timestamp.startsWith(queryDate + ' ')) records.set(record.timestamp + '|' + record.direction, record);
     }
     if (!meta.hasNext) {
-      if (expectedTotal !== null && rowsRead !== expectedTotal) throw new Error('刷卡记录未读取完整');
+      if (expectedTotal !== null && rowsRead !== expectedTotal) throw readerError('SWIPE_INCOMPLETE', '刷卡记录未读取完整', { ...pageDetails, rowsRead, expectedTotal });
       return [...records.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
     }
     if (index === 49) break;
     previous = meta;
     // Each page is an additional school request, so never fetch pages concurrently.
     await delay(1500);
-    if (!await runReader(tabId, 'advanceSwipePage')) throw new Error('无法翻到下一页');
+    try {
+      if (!await runReader(tabId, 'advanceSwipePage')) throw readerError('SWIPE_NEXT', '无法翻到下一页');
+    } catch (error) {
+      throw withErrorDetails(error, { stage: "advance_swipes", operation: "advance_page", page: index + 2, currentPage: meta.current, rowsRead, expectedTotal });
+    }
   }
-  throw new Error('刷卡页数超过安全上限');
+  throw readerError('SWIPE_LIMIT', '刷卡页数超过安全上限', { stage: "read_swipes", page: 50, rowsRead, expectedTotal });
 }
 
 async function scrapeAttendance({ sourceTabId = null } = {}) {
   let tab;
   let closeWhenDone = false;
+  let attendanceData = null;
+  let summaryUpdatedAt = null;
+  let stage = "open_portal";
 
   try {
     if (sourceTabId !== null) {
@@ -196,49 +252,40 @@ async function scrapeAttendance({ sourceTabId = null } = {}) {
       tab = await waitForTab(tab.id, "slai.edu.cn");
     }
 
-    if (isAuthUrl(tab.url)) {
-      await saveState({
-        ...(await getState()),
-        status: "auth",
-        message: "登录已过期，请重新登录"
-      });
-      return;
-    }
+    requirePortal(tab);
 
-    if (!isPortalUrl(tab.url)) throw new Error("学校系统跳转到了未知页面");
-
+    stage = "find_attendance";
     let attendanceUrl = await runReader(tab.id, "findAttendanceUrl");
     if (!attendanceUrl) {
       await chrome.tabs.update(tab.id, { url: PORTAL_URL });
       tab = await waitForTab(tab.id, "slai.edu.cn");
-      if (isAuthUrl(tab.url)) {
-        await saveState({
-          ...(await getState()),
-          status: "auth",
-          message: "登录已过期，请重新登录"
-        });
-        return;
-      }
+      requirePortal(tab);
       attendanceUrl = await runReader(tab.id, "findAttendanceUrl");
     }
 
-    if (!attendanceUrl) throw new Error("没有找到“学生考勤统计查询”页面");
-    if (!isPortalUrl(attendanceUrl)) throw new Error("考勤地址无效");
+    if (!attendanceUrl) throw readerError("ATTENDANCE_LINK_MISSING", "没有找到考勤入口");
+    if (!isPortalUrl(attendanceUrl)) throw readerError("PORTAL_URL", "考勤地址无效");
+    stage = "open_summary";
     if (tab.url !== attendanceUrl) {
       await chrome.tabs.update(tab.id, { url: attendanceUrl });
       tab = await waitForTab(tab.id, "/edu/acm/swipe/attendList");
     }
 
+    stage = "read_summary";
     const data = await waitForReader(
       tab.id,
       "extractAttendance",
       (value) => Array.isArray(value?.days) && value.days.length > 0
     );
     if (!data || !Array.isArray(data.days) || data.days.length === 0) {
-      throw new Error("考勤页面已打开，但没有识别到每日数据");
+      throw readerError("SUMMARY_MISSING", "考勤页面已打开，但没有识别到每日数据", { timeoutMs: 10000 });
     }
 
-    const { studentNumber, ...attendanceData } = data;
+    const { studentNumber, ...summary } = data;
+    attendanceData = summary;
+    summaryUpdatedAt = new Date().toISOString();
+    if (!studentNumber) throw readerError("STUDENT_NUMBER_MISSING", "缺少查询明细所需的学号");
+    stage = "open_swipes";
     let todaySwipes = [];
     if (studentNumber) {
       const queryDate = localDateKey();
@@ -249,23 +296,32 @@ async function scrapeAttendance({ sourceTabId = null } = {}) {
       if (recordsUrl !== attendanceUrl) {
         await chrome.tabs.update(tab.id, { url: recordsUrl });
         tab = await waitForTab(tab.id, "/edu/acm/swipe/list");
+        stage = "read_swipes";
         todaySwipes = await collectSwipePages(tab.id, queryDate);
+      } else {
+        throw readerError("SWIPE_ROUTE_MISSING", "无法确定今日明细地址");
       }
     }
 
+    stage = "save_state";
     await saveState({
       status: "ok",
       message: "考勤已更新",
       requiredSeconds: REQUIRED_SECONDS,
       ...attendanceData,
       todaySwipes,
+      summaryUpdatedAt,
       updatedAt: new Date().toISOString()
     });
   } catch (error) {
+    const diagnostic = diagnoseError(error, { stage });
+    const cached = await getState();
+    const summaryOnly = attendanceData && diagnostic.code !== 'AUTH_EXPIRED';
     await saveState({
-      ...(await getState()),
-      status: error.code === 'AUTH_EXPIRED' ? 'auth' : 'error',
-      message: "读取考勤失败，请稍后重试或打开学校系统检查"
+      ...cached,
+      ...(summaryOnly ? { ...attendanceData, todaySwipes: [], summaryUpdatedAt } : {}),
+      status: diagnostic.code === 'AUTH_EXPIRED' ? 'auth' : summaryOnly ? 'partial' : 'error',
+      diagnostic
     });
   } finally {
     if (closeWhenDone && tab?.id) chrome.tabs.remove(tab.id).catch(() => {});
@@ -314,6 +370,8 @@ async function openLogin() {
   await saveState({
     ...(await getState()),
     status: "auth",
+    diagnostic: null,
+    errorCode: "",
     message: "请在学校页面完成登录"
   });
   await chrome.tabs.create({ url: PORTAL_URL, active: true });
@@ -351,21 +409,23 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (sender?.id !== chrome.runtime.id || sender?.url !== chrome.runtime.getURL("widget.html")) return false;
-  if (message?.type === "get-state") {
-    getState().then((state) => sendResponse({ ok: true, state }));
+  const respond = (work, operation) => {
+    Promise.resolve().then(work).then(sendResponse).catch((error) => sendResponse({
+      ok: false, diagnostic: diagnoseError(error, { stage: "widget_request", operation })
+    }));
     return true;
+  };
+  if (message?.type === "get-state") {
+    return respond(async () => ({ ok: true, state: await getState() }), "get_state");
   }
   if (message?.type === "refresh") {
-    refreshAttendance().then(() => getState()).then((state) => sendResponse({ ok: true, state }));
-    return true;
+    return respond(async () => { await refreshAttendance(); return { ok: true, state: await getState() }; }, "refresh");
   }
   if (message?.type === "login") {
-    openLogin().then(() => sendResponse({ ok: true }));
-    return true;
+    return respond(async () => { await openLogin(); return { ok: true }; }, "login");
   }
   if (message?.type === "open-portal") {
-    chrome.tabs.create({ url: PORTAL_URL, active: true }).then(() => sendResponse({ ok: true }));
-    return true;
+    return respond(async () => { await chrome.tabs.create({ url: PORTAL_URL, active: true }); return { ok: true }; }, "open_portal");
   }
   return false;
 });

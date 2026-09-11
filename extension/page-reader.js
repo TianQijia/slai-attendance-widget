@@ -85,11 +85,17 @@
     };
   }
 
+  function swipeRows() {
+    // Layui also renders fixed-column copies. Count only its main table.
+    const main = document.querySelector('.layui-table-main');
+    return Array.from((main || document).querySelectorAll('tr'));
+  }
+
   function extractSwipeRecords() {
     const timePattern = /^\d{4}-\d{2}-\d{2} [0-2]\d:[0-5]\d:[0-5]\d$/;
     const records = [];
 
-    for (const row of document.querySelectorAll("tr")) {
+    for (const row of swipeRows()) {
       const cells = Array.from(row.querySelectorAll("td")).map((cell) => clean(cell.innerText));
       // 学校的月度考勤只使用“闸机-…”校园道闸；“宿舍_道闸…”不计入。
       const campusGate = cells.find((cell) => /^闸机[-_]/.test(cell) && !cell.includes("宿舍"));
@@ -108,17 +114,20 @@
   function extractSwipePage() {
     const records = extractSwipeRecords();
     const pageText = clean(document.body?.innerText);
-    const pager = document.querySelector('.pagination, .pager, [aria-label="分页"]');
-    const current = Number(clean(pager?.querySelector('.active, [aria-current="page"]')?.textContent)) ||
+    const pager = document.querySelector('.layui-laypage, .pagination, .pager, [aria-label="分页"]');
+    const current = Number(clean(pager?.querySelector('.layui-laypage-curr, .active, [aria-current="page"]')?.textContent)) ||
       Number(document.querySelector('[name="pageNo"]')?.value) ||
       Number(new URL(location.href).searchParams.get('pageNo')) || 1;
-    const total = Number(pageText.match(/共\s*(\d+)\s*条/)?.[1]);
-    const rowTimes = Array.from(document.querySelectorAll('tr')).map((row) =>
+    const countText = [clean(pager?.querySelector('.layui-laypage-count')?.textContent), clean(pager?.textContent), pageText]
+      .find((text) => /共\s*\d+\s*条/.test(text)) || '';
+    const total = Number(countText.match(/共\s*(\d+)\s*条/)?.[1]);
+    const rowTimes = swipeRows().map((row) =>
       clean(row.textContent).match(/\d{4}-\d{2}-\d{2} [0-2]\d:[0-5]\d:[0-5]\d/)?.[0]
     ).filter(Boolean);
     const next = nextSwipeControl(current);
+    const loading = Array.from(document.querySelectorAll('.layui-table-init')).some((el) => el.getClientRects().length > 0);
     return {
-      ready: records.length > 0 || /共\s*\d+\s*条/.test(pageText),
+      ready: !loading && (records.length > 0 || /共\s*\d+\s*条/.test(countText)),
       records,
       pagination: {
         current, total: Number.isFinite(total) ? total : null,
@@ -129,9 +138,9 @@
   }
 
   function nextSwipeControl(current) {
-    const controls = Array.from(document.querySelectorAll('.pagination a, .pagination button, .pager a, .pager button, a[rel="next"], [aria-label="分页"] a'));
-    const enabled = controls.filter((el) => !el.closest('.disabled, [aria-disabled="true"]') && !el.disabled);
-    const next = enabled.find((el) => el.rel === 'next' || /^(?:下一页|下页)$/.test(clean(el.textContent)) ||
+    const controls = Array.from(document.querySelectorAll('.layui-laypage a, .pagination a, .pagination button, .pager a, .pager button, a[rel="next"], [aria-label="分页"] a, [aria-label="分页"] button'));
+    const enabled = controls.filter((el) => !el.closest('.layui-disabled, .disabled, [aria-disabled="true"]') && !el.disabled);
+    const next = enabled.find((el) => el.classList.contains('layui-laypage-next') || el.rel === 'next' || /^(?:下一页|下页)\s*[›»>]*$/.test(clean(el.textContent)) ||
       /^(?:下一页|下页)$/.test(el.getAttribute('title') || el.getAttribute('aria-label') || ''));
     if (next) return next;
     // Numbered links are useful when the portal renders only numeric navigation.
