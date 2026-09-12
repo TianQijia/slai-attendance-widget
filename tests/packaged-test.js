@@ -54,6 +54,13 @@ async function unpack(file, dir, names) {
     await invoke("start"); running = true;
     config = JSON.parse(await fs.readFile(path.join(dir, "config.local.json"), "utf8"));
     assert.equal((await read()).state, null);
+    const firstInstance = (await read()).instanceId;
+    await invoke("connection-info");
+    await invoke("start");
+    assert.equal((await read()).instanceId, firstInstance, "Final launchers must reuse the verified listener on the same adapter");
+    const bound = JSON.parse(await fs.readFile(path.join(dir, "instance.local.json"), "utf8"));
+    assert.equal(bound.lanHost, host || null);
+    assert((await fs.readFile(path.join(dir, "connection.html"), "utf8")).includes(`http://${bound.lanHost || "127.0.0.1"}:32100/#token=${config.viewToken}`));
     const profile = path.join(temp, "browser-profile");
     const launch = async () => {
       const next = await chromium.launchPersistentContext(profile, {

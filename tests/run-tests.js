@@ -360,7 +360,7 @@ async function main() {
       }, summaryUpdatedAt: "2030-04-08T02:10:00.000Z"
     }));
     assert.equal(await ui.locator("#todayDuration").innerText(), "03:00:00");
-    assert.equal(await ui.locator(".day-row").count(), 2);
+    assert.equal(await ui.locator(".day-row").count(), 30);
     assert.match(await ui.locator("#updatedAt").innerText(), /汇总更新于/);
     assert.match(await ui.locator("#statusText").innerText(), /超时.*学校汇总/);
     await ui.clock.runFor(2000);

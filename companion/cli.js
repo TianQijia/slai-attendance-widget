@@ -3,6 +3,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { createCompanion, atomicWrite, loadConfig, isPrivate } = require("./server");
+const { probe } = require("./network-diagnostics");
 const { codedError, diagnoseError, diagnosticReport } = globalThis.__slaiErrors;
 const root = path.resolve(__dirname, "..");
 function dataDirectory() {
@@ -36,11 +37,41 @@ async function status(dir) {
     return value.schemaVersion === 1 ? value : null;
   } catch { return null; }
 }
+async function instanceInfo(dir, live) {
+  try {
+    const instance = JSON.parse(await fs.readFile(path.join(dir, "instance.local.json"), "utf8"));
+    if (!Number.isSafeInteger(instance.pid) || instance.pid <= 1 || instance.instanceId !== live.instanceId) throw new Error();
+    return instance;
+  } catch (error) { throw codedError("CONNECTION_UNCONFIRMED", { stage: "companion_start", systemCode: error.code }); }
+}
+async function stopInstance(dir, live) {
+  const instance = await instanceInfo(dir, live);
+  try { process.kill(instance.pid, "SIGTERM"); }
+  catch (error) { throw codedError("STOP_FAILED", { stage: "companion_start", systemCode: error.code }); }
+  for (let i = 0; i < 40; i++) {
+    const current = await status(dir);
+    if (!current || current.instanceId !== live.instanceId) return;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  throw codedError("STOP_FAILED", { stage: "companion_start", timeoutMs: 10000 });
+}
+async function verifiedConnectionInfo(dir, host, live) {
+  const instance = await instanceInfo(dir, live);
+  if (instance.lanHost !== null && !isPrivate(instance.lanHost)) throw codedError("CONNECTION_UNCONFIRMED", { stage: "companion_start" });
+  if (instance.lanHost !== host || (host && !lanAddresses().includes(host))) throw codedError("LAN_RESTART_REQUIRED", { stage: "companion_start", port: 32100 });
+  const config = await loadConfig(dir);
+  // A selected adapter is only a preference. Publish a link after the matching
+  // live instance actually answers on that address with the viewing credential.
+  await probe({ host: host || "127.0.0.1", port: 32100, token: config.viewToken, expectedInstance: live.instanceId });
+  if (host) await atomicWrite(path.join(dir, "network.local.json"), { host });
+  else await fs.rm(path.join(dir, "network.local.json"), { force: true });
+  return connectionInfo(dir, host);
+}
 async function chooseHost(dir, requested, interactive) {
   const addresses = lanAddresses();
   if (requested) {
     if (!addresses.includes(requested)) throw codedError("LISTEN_FAILED", { stage: "companion_start", port: 32100 });
-    await atomicWrite(path.join(dir, "network.local.json"), { host: requested }); return requested;
+    return requested;
   }
   try { const saved = JSON.parse(await fs.readFile(path.join(dir, "network.local.json"), "utf8")); if (addresses.includes(saved.host)) return saved.host; } catch { /* Re-select a changed network. */ }
   if (addresses.length === 0) return null;
@@ -55,7 +86,7 @@ async function chooseHost(dir, requested, interactive) {
       if (!host) throw codedError("LAN_SELECTION", { stage: "companion_start" });
     } finally { rl.close(); }
   }
-  await atomicWrite(path.join(dir, "network.local.json"), { host }); return host;
+  return host;
 }
 function startupDefinition(dir) {
   if (process.platform === "win32") return { file: path.join(process.env.APPDATA, "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "SLAI-Attendance.cmd"),
@@ -89,39 +120,46 @@ async function main(args = process.argv.slice(2)) {
   if (command === "stop") {
     const live = await status(dir);
     if (!live) { console.log("未检测到可联系的伴随服务。"); return; }
-    try {
-      const instance = JSON.parse(await fs.readFile(path.join(dir, "instance.local.json"), "utf8"));
-      if (!Number.isSafeInteger(instance.pid) || instance.pid <= 1 || instance.instanceId !== live.instanceId) throw new Error();
-      process.kill(instance.pid, "SIGTERM"); console.log("已向此伴随服务发送停止信号。"); return;
-    } catch { throw codedError("STOP_FAILED", { stage: "companion_start" }); }
+    await stopInstance(dir, live);
+    console.log("此伴随服务已停止。"); return;
   }
   if (!["start", "serve", "info"].includes(command)) throw codedError("CONFIG_FAILED", { stage: "companion_start" });
   const host = await chooseHost(dir, option("--host"), process.stdin.isTTY);
   if (command === "info") {
-    const file = await connectionInfo(dir, host); if (!args.includes("--headless")) openFile(file);
+    const config = await loadConfig(dir);
+    const { body: live } = await probe({ host: "127.0.0.1", port: 32100, token: config.viewToken });
+    const file = await verifiedConnectionInfo(dir, host, live); if (!args.includes("--headless")) openFile(file);
     console.log("已生成本机连接信息。配对码和查看链接仅保存在用户数据目录的 connection.html。"); return;
   }
   if (command === "start") {
-    if (!await status(dir)) {
+    let live = await status(dir);
+    if (live && (await instanceInfo(dir, live)).lanHost !== host) {
+      await stopInstance(dir, live);
+      live = await status(dir);
+    }
+    if (!live) {
       await fs.rm(diagnosticFile, { force: true });
       const child = spawn(process.execPath, [path.join(__dirname, "cli.js"), "serve", "--data-dir", dir, ...(host ? ["--host", host] : [])], { detached: true, stdio: "ignore", windowsHide: true });
       child.unref();
       for (let i = 0; i < 40; i++) {
-        if (await status(dir)) break;
+        live = await status(dir);
+        // The loopback port can answer before LAN binding has completed. The
+        // instance record is published only after all listeners are ready.
+        if (live && await instanceInfo(dir, live).catch(() => null)) break;
         try { const diagnostic = JSON.parse(await fs.readFile(diagnosticFile, "utf8")); throw codedError(diagnostic.code, diagnostic); }
         catch (error) { if (error.code !== "ENOENT") throw error; }
         if (i === 39) throw codedError("BRIDGE_TIMEOUT", { stage: "companion_start", timeoutMs: 10000 });
         await new Promise(resolve => setTimeout(resolve, 250));
       }
     }
-    const file = await connectionInfo(dir, host); if (!args.includes("--headless")) openFile(file);
+    const file = await verifiedConnectionInfo(dir, host, live); if (!args.includes("--headless")) openFile(file);
     console.log("伴随服务已启动。查看端口 32100；写入端口仅在本机 32101。使用连接信息工具查看配对码和手机链接。"); return;
   }
   let service;
   try {
     service = await createCompanion({ dir, lanHost: host });
-    await atomicWrite(path.join(dir, "instance.local.json"), { pid: process.pid, instanceId: service.instanceId });
-    await connectionInfo(dir, host);
+    await atomicWrite(path.join(dir, "instance.local.json"), { pid: process.pid, instanceId: service.instanceId, lanHost: service.lanHost });
+    await verifiedConnectionInfo(dir, host, service);
     const stop = async () => { await service.close(); process.exit(0); };
     process.once("SIGTERM", stop); process.once("SIGINT", stop);
   } catch (error) {

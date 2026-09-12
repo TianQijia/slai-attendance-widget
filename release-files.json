@@ -30,6 +30,8 @@
     "extension/report-utils.js",
     "runtime-downloads.json",
     "tests/time-test.js",
+    "tests/cli-test.js",
+    "tests/month-test.js",
     "tests/companion-test.js",
     "tests/packaged-test.js",
     ".github/workflows/validate.yml",

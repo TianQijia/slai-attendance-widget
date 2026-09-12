@@ -49,18 +49,30 @@ function formatMonth(value) {
   return match ? `${match[1]} 年 ${Number(match[2])} 月` : "本月";
 }
 
+function displayMonth(state) {
+  return state.month || localDateKey(new Date(viewNow())).slice(0, 7);
+}
+
 function swipeClock(timestamp) {
   return timestamp?.match(/\s(\d{2}:\d{2}:\d{2})$/)?.[1] || "";
 }
 
 function renderDays(state) {
   const list = $("dayList");
-  const days = [...(state.days || [])];
   const today = localDateKey(new Date(viewNow()));
-  if (!days.some(day => day.date === today)) days.push({ date: today, weekday: "", type: "", duration: "0" });
-  days.sort((a, b) => a.date.localeCompare(b.date));
+  const month = displayMonth(state);
+  if ($("monthLabel")) $("monthLabel").textContent = month === today.slice(0, 7) ? "本月记录" : "历史记录 · 本月待同步";
+  const lastDay = new Date(`${month}-01T00:00:00Z`);
+  lastDay.setUTCMonth(lastDay.getUTCMonth() + 1, 0);
+  const summaries = new Map((state.days || []).map(day => [day.date, day]));
+  const weekday = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", weekday: "short" });
+  const days = Array.from({ length: lastDay.getUTCDate() }, (_, index) => {
+    const date = `${month}-${String(index + 1).padStart(2, "0")}`;
+    const summary = summaries.get(date);
+    return summary ? { ...summary, hasSummary: true } : { date, weekday: weekday.format(new Date(`${date}T00:00:00+08:00`)), type: "", hasSummary: false };
+  });
 
-  const workdays = days.filter((day) => day.type === "工作日" && day.date < today);
+  const workdays = days.filter((day) => day.hasSummary && day.type === "工作日" && day.date < today);
   const qualified = workdays.filter((day) => {
     const seconds = day.date === today ? attendanceSeconds(state, viewNow(), { forceFreeze: forceFreeze() }).seconds : secondsFromDuration(day.duration);
     return seconds >= REQUIRED_SECONDS;
@@ -74,8 +86,8 @@ function renderDays(state) {
     const tone = isOff || isFuture ? "off" : seconds >= REQUIRED_SECONDS ? "good" : "short";
     const dateParts = day.date.split("-");
     const label = `${Number(dateParts[1])}/${Number(dateParts[2])}`;
-    const type = day.date === today ? "今日估算" : day.type || "未分类";
-    const duration = day.date === today ? (attendanceSeconds(state, viewNow(), { forceFreeze: forceFreeze() }).available ? fullClockDuration(seconds) : "--:--:--") : (day.duration === "0" ? "0:00:00" : day.duration);
+    const type = day.date === today ? "今日估算" : day.hasSummary ? day.type || "未分类" : isFuture ? "未到日期" : "待同步";
+    const duration = day.date === today ? (attendanceSeconds(state, viewNow(), { forceFreeze: forceFreeze() }).available ? fullClockDuration(seconds) : "--:--:--") : !day.hasSummary ? "--:--:--" : (day.duration === "0" ? "0:00:00" : day.duration);
     return `
       <div class="day-row ${day.date === today ? "today" : ""}">
         <div class="day-date"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(day.weekday || "")}</span></div>
@@ -104,7 +116,7 @@ function renderToday(state) {
   $("remaining").textContent = !attendance.available ? "--" : complete ? "已达标" : shortDuration(remaining);
   $("remaining").parentElement.classList.toggle("done", complete);
   $("progressRing").style.setProperty("--progress", `${progress * 360}deg`);
-  $("monthTitle").textContent = formatMonth(state.month);
+  $("monthTitle").textContent = formatMonth(displayMonth(state));
   $("updatedAt").textContent = formatUpdated(state);
   if ($("summaryUpdatedAt")) $("summaryUpdatedAt").textContent = "学校汇总更新于 " + formatInstant(state.summaryUpdatedAt);
 
@@ -137,7 +149,7 @@ function render(state) {
   $("todayLabel").textContent = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "long", day: "numeric", weekday: "long" }).format(new Date(viewNow()));
   lastRenderedDate = localDateKey(new Date(viewNow()));
   renderToday(state);
-  $("monthTitle").textContent = formatMonth(state.month);
+  $("monthTitle").textContent = formatMonth(displayMonth(state));
   $("updatedAt").textContent = formatUpdated(state);
   if ($("summaryUpdatedAt")) $("summaryUpdatedAt").textContent = "学校汇总更新于 " + formatInstant(state.summaryUpdatedAt);
   $("authCard").classList.toggle("hidden", mobileView || state.status !== "auth");
