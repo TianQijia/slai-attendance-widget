@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SLAI 考勤</title>
+    <link rel="stylesheet" href="widget.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="todayLabel">今日考勤</p>
+          <h1>在校时间</h1>
+        </div>
+        <button id="refreshView" type="button">刷新学校数据</button>
+      </header>
+      <p class="source-note" id="schoolRefreshStatus" role="status">点击后通知电脑扩展抓取学校数据。</p>
+      <p class="source-note hidden" id="accessNotice">需要连接查看服务。<button id="openAccess" type="button">连接设置</button></p>
+
+      <section class="today-card">
+        <div class="progress-ring" id="progressRing">
+          <div class="progress-core">
+            <strong id="todayDuration">--:--</strong>
+            <span>已累计</span>
+          </div>
+        </div>
+        <div class="today-detail">
+          <div class="status-line">
+            <span class="status-dot" id="statusDot"></span>
+            <span id="statusText">正在读取</span>
+          </div>
+          <div class="metric">
+            <span>每日要求</span>
+            <strong>6 小时</strong>
+          </div>
+          <div class="metric remaining">
+            <span id="remainingLabel">距离完成</span>
+            <strong id="remaining">--</strong>
+          </div>
+        </div>
+      </section>
+
+      <p class="source-note" id="dataSource">暂无可靠数据</p>
+
+      <section id="authCard" class="hidden"></section>
+
+      <section class="month-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow" id="monthLabel">本月记录</p>
+            <h2 id="monthTitle">---- 年 -- 月</h2>
+          </div>
+          <span class="summary" id="monthSummary">-- / -- 天达标</span>
+        </div>
+        <div class="day-list" id="dayList">
+          <div class="skeleton"></div>
+          <div class="skeleton"></div>
+          <div class="skeleton"></div>
+        </div>
+      </section>
+
+      <details class="diagnostic-card" id="accessCard" aria-label="查看权限">
+        <summary>私人局域网查看</summary>
+        <p id="accessMessage" role="status">正在读取查看权限…</p>
+        <form id="accessForm">
+          <label for="viewLink">手机查看链接</label>
+          <input id="viewLink" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="2048" placeholder="粘贴电脑连接信息中的完整查看链接">
+          <button id="connectView" type="submit">连接查看服务</button>
+        </form>
+        <label class="remember-view"><input id="rememberView" type="checkbox">在此浏览器记住查看权限（仅自己的设备）</label>
+        <p id="accessStorageStatus" role="status"></p>
+        <button id="changeViewLink" class="hidden" type="button">更换查看链接</button>
+        <button id="forgetView" class="hidden" type="button">退出并清除保存的权限</button>
+      </details>
+
+      <details class="diagnostic-card" id="connectionDetails">
+        <summary>连接与排错</summary>
+      <section class="diagnostic-card hidden" id="diagnosticCard" aria-label="排错信息">
+        <div class="diagnostic-heading">
+          <strong>排错信息</strong>
+          <button id="copyDiagnostic" type="button">复制排错信息</button>
+        </div>
+        <p id="diagnosticAction"></p>
+        <details id="diagnosticDetails">
+          <summary>查看错误代码和现场细节</summary>
+          <pre id="diagnosticReport"></pre>
+        </details>
+        <span class="copy-status" id="copyStatus" role="status"></span>
+      </section>
+
+        <p id="connectionStatus" role="status">正在连接…</p>
+        <button id="reconnect" type="button">重新连接查看服务</button>
+        <pre id="connectionReport"></pre>
+        <button id="copyConnection" type="button">复制连接排错信息</button>
+        <p id="connectionCopyStatus" class="copy-status" role="status"></p>
+        <details id="networkDetails">
+          <summary>网络检测</summary>
+          <p>只检测本查看服务，不触发学校采集。页面完全打不开时，请在电脑运行 diagnose 启动器。</p>
+          <button id="checkNetwork" type="button">开始网络检测</button>
+          <button id="copyNetwork" type="button">复制网络检测报告</button>
+          <pre id="networkReport"></pre>
+          <p id="networkCopyStatus" role="status"></p>
+        </details>
+      </details>
+      <p class="source-note" id="viewerRefreshStatus" role="status">尚未读取电脑结果</p>
+      <footer>
+        <span id="summaryUpdatedAt">学校汇总尚未更新</span>
+        <span id="updatedAt">尚未更新</span>
+        <span id="nextRefresh">每 30 分钟自动刷新</span>
+      </footer>
+    </main>
+    <script src="error-utils.js"></script>
+    <script src="time-utils.js"></script>
+    <script src="state-utils.js"></script>
+    <script src="report-utils.js"></script>
+    <script src="refresh-utils.js"></script>
+    <script src="view.js"></script>
+    <script src="network-report.js"></script>
+    <script src="viewer.js"></script>
+    <script src="viewer-refresh.js"></script>
+  </body>
+</html>

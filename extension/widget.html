@@ -42,6 +42,8 @@
         </div>
       </section>
 
+      <p class="source-note" id="dataSource">暂无可靠数据</p>
+
       <section class="auth-card hidden" id="authCard">
         <div>
           <strong>需要重新登录</strong>
@@ -66,7 +68,7 @@
       <section class="month-section">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">本月记录</p>
+            <p class="eyebrow" id="monthLabel">本月记录</p>
             <h2 id="monthTitle">---- 年 -- 月</h2>
           </div>
           <span class="summary" id="monthSummary">-- / -- 天达标</span>
@@ -78,14 +80,28 @@
         </div>
       </section>
 
+      <details class="diagnostic-card" id="bridgeSettings">
+        <summary>手机查看 · 本机连接</summary>
+        <p>先运行伴随服务，再粘贴本机配对码。手机查看只接收脱敏考勤。</p>
+        <label for="bridgeToken">本机配对码</label>
+        <input id="bridgeToken" type="password" autocomplete="off" spellcheck="false">
+        <button id="enableBridge" type="button">启用并连接</button>
+        <button id="disableBridge" type="button">关闭连接</button>
+        <p id="bridgeStatus" role="status">尚未启用</p>
+        <pre id="bridgeReport"></pre>
+        <button id="copyBridge" type="button">复制连接排错信息</button>
+      </details>
       <footer>
+        <span id="summaryUpdatedAt">学校汇总尚未更新</span>
         <span id="updatedAt">尚未更新</span>
         <span id="nextRefresh">每 30 分钟自动刷新</span>
       </footer>
     </main>
     <script src="error-utils.js"></script>
-    <script src="state-utils.js"></script>
     <script src="time-utils.js"></script>
+    <script src="state-utils.js"></script>
+    <script src="report-utils.js"></script>
+    <script src="view.js"></script>
     <script src="widget.js"></script>
   </body>
 </html>
