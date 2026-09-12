@@ -6,6 +6,8 @@
 
 **扩展提示 Manifest file is missing or unreadable：** Chrome 应加载 `slai-attendance-widget-v1.2.0.zip` 的解压目录，第一层应有 `manifest.json`。伴随服务包里的 `extension` 只是手机页面共用文件，不能加载为扩展。使用源码时才选择源码根目录下的完整 `extension` 文件夹。
 
+**下载了 Source code：** GitHub 自动生成的 Source code 是给开发者的源码，源码中的 `companion/start.cmd` 缺少配套运行时，不能直接双击启动。普通使用请通过 README 的直接链接下载扩展包和手机服务包。发布页的 `SHA256SUMS.txt` 可用于核对下载文件的 SHA-256。
+
 ## 更新与换网络
 
 **从旧版本或测试包更新：**

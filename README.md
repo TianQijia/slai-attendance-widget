@@ -8,40 +8,37 @@
 
 ## 下载 1.2.0
 
-在 [1.2.0 发布页](https://github.com/TianQijia/slai-attendance-widget/releases/tag/v1.2.0) 的 Assets 中选择下列文件：
+只在电脑看：下载**扩展包**。还想在手机看：再下载电脑系统对应的**手机服务包**。两个包分别解压，用途如下：
 
-| 用途 | 下载文件 |
+| 下载文件 | 解压后怎么用 |
 | --- | --- |
-| 电脑 Chrome 小窗，所有用户都需要 | `slai-attendance-widget-v1.2.0.zip` |
-| 在手机查看，电脑是 Windows x64 时另加 | `slai-attendance-companion-v1.2.0-win-x64.zip` |
-| 在手机查看，电脑是 Apple Silicon Mac 时另加 | `slai-attendance-companion-v1.2.0-darwin-arm64.zip` |
+| [扩展包：widget-v1.2.0.zip](https://github.com/TianQijia/slai-attendance-widget/releases/download/v1.2.0/slai-attendance-widget-v1.2.0.zip) | 导入 Chrome |
+| [Windows 手机服务包：companion-win-x64.zip](https://github.com/TianQijia/slai-attendance-widget/releases/download/v1.2.0/slai-attendance-companion-v1.2.0-win-x64.zip) | 双击 `companion/start.cmd` |
+| [Apple Silicon Mac 手机服务包：companion-darwin-arm64.zip](https://github.com/TianQijia/slai-attendance-widget/releases/download/v1.2.0/slai-attendance-companion-v1.2.0-darwin-arm64.zip) | 双击 `companion/start.command` |
 
-伴随服务包内置 Node.js，普通用户无需另装编程环境。`SHA256SUMS.txt` 用于校验下载文件；GitHub 自动生成的 Source code 包是源码，不是上表中的安装包。
+直接点击上面的下载链接即可，所有包都无需另装编程环境。
 
 ## 安装电脑扩展
 
-1. 下载上表中的 `slai-attendance-widget-v1.2.0.zip`。
-2. 解压到一个准备长期保留的文件夹，不要直接在压缩包里打开。
-3. 在 Chrome 地址栏输入 `chrome://extensions`，打开右上角“开发者模式”。
-4. 点击“加载已解压的扩展程序”，选择包含 `manifest.json` 的解压文件夹。
-5. 小窗出现后，如提示登录，点击“去登录”，使用**自己的学校账号**在学校页面登录。完成后会重新读取考勤。
+1. 下载**扩展包**，解压到一个长期保留的文件夹。
+2. 在 Chrome 地址栏输入 `chrome://extensions`，打开右上角“开发者模式”。
+3. 点击“加载已解压的扩展程序”，选择刚解压的文件夹，里面应直接有 `manifest.json`。
+4. 小窗出现后，点击“去登录”，使用**自己的学校账号**登录；已登录时会直接读取考勤。
 
-扩展 ZIP 解压后，`manifest.json` 就在解压文件夹的第一层。伴随服务包里的 `extension` 仅存放手机页面共用文件，不能导入 Chrome；选错时会提示“Manifest file is missing or unreadable”，请重新选择扩展 ZIP 的解压目录。
+**Chrome 只导入扩展包。** 手机服务包里的 `extension` 文件夹不能导入 Chrome。
 
 关闭小窗后，点击 Chrome 工具栏的扩展菜单 → “SLAI 考勤小组件”即可重新打开。Chrome 启动时也会打开小窗。
-
-如果下载的是 GitHub 自动生成的 Source code 压缩包，请加载其中的 `extension` 文件夹。手机伴随服务请另下载上表中的安装包；源码里的 `companion/start.cmd` 不含配套运行时，不能直接双击启动。
 
 ## 手机查看：四步连接
 
 手机与电脑需连接同一可信 Wi-Fi，电脑保持 Chrome 和伴随服务运行。1.2.0 提供局域网网页查看，不是安卓 APK；无需租服务器。
 
-1. **下载并解压。** 先安装上面的扩展，再按电脑系统下载伴随服务 ZIP，解压到准备长期保留的文件夹。
+1. **下载并解压手机服务包。** 先装好上面的扩展，再按电脑系统下载手机服务包，解压到长期保留的文件夹。
 2. **启动电脑服务。** 打开其中的 `companion` 文件夹，Windows 双击 `start.cmd`，Mac 双击 `start.command`；连接信息页会自动打开。
 3. **配对电脑扩展。** 在扩展小窗底部展开“手机查看”，粘贴信息页中的“本机配对码”，点击“启用并连接”，允许本机连接权限。
 4. **手机打开链接。** 将信息页中的完整“手机查看链接”传到自己的手机浏览器并打开；可展开底部“私人局域网查看”，勾选“在此浏览器记住查看权限”。本机配对码仅用于电脑扩展。
 
-Windows 首次可能询问是否允许内置 Node.js 联网，请按自己信任的网络范围确认。下载目录、网络或 IP 改变后的处理，以及打不开、重连、自动启动和卸载步骤，见[手机查看与排错](docs/mobile.md)。
+Windows 首次可能弹出 Node.js 防火墙提示，请按自己信任的网络范围允许。平时保持 Chrome 和手机服务运行；**换 Wi-Fi 后重新双击启动器，使用新手机链接。** 详细排错、自动启动和卸载见[手机查看与排错](docs/mobile.md)。
 
 ## 如何计算
 
