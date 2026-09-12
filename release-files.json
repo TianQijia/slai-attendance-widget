@@ -11,6 +11,7 @@
     "package-lock.json",
     "release-files.json",
     "docs/demo.png",
+    "docs/mobile.md",
     "extension/manifest.json",
     "extension/background.js",
     "extension/error-utils.js",
@@ -102,7 +103,9 @@
     "extension/widget.css",
     "extension/refresh-utils.js",
     "companion/refresh-control.js",
-    "companion/viewer-refresh.js"
+    "companion/viewer-refresh.js",
+    "docs/mobile.md",
+    "docs/demo.png"
   ],
   "companionPlatforms": {
     "darwin-arm64": [
