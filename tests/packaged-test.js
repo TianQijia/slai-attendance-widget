@@ -35,8 +35,8 @@ async function unpack(file, dir, names) {
   let context, config, running = false, schoolMode = "auth", schoolDate;
   const visitedPages = [];
   const host = lanAddresses()[0];
-  const invoke = command => {
-    const script = path.join(bundle, "companion", `${command}.${target === "win-x64" ? "cmd" : "command"}`);
+  const invoke = (command, from = bundle) => {
+    const script = path.join(from, "companion", `${command}.${target === "win-x64" ? "cmd" : "command"}`);
     const options = { env: { ...process.env, PATH: "" }, timeout: command === "diagnose" ? 30000 : 15000 };
     if (target !== "win-x64") return execFile(script, ["--headless", "--data-dir", dir, ...(host ? ["--host", host] : [])], options);
     const line = `""${script}" --headless --data-dir "${dir}"${host ? ` --host ${host}` : ""}"`;
@@ -49,6 +49,17 @@ async function unpack(file, dir, names) {
   try {
     await unpack(path.join(root, "dist", `slai-attendance-companion-v${version}-${target}.zip`), bundle, [...list.companion, ...list.companionPlatforms[target], ...Object.keys(list.companionDependencies), runtimeName, "runtime/LICENSE"]);
     await unpack(path.join(root, "dist", `slai-attendance-widget-v${version}.zip`), extension, list.archive);
+    const incomplete = path.join(temp, "missing runtime"), launcher = `start.${target === "win-x64" ? "cmd" : "command"}`;
+    await fs.mkdir(path.join(incomplete, "companion"), { recursive: true });
+    await fs.copyFile(path.join(bundle, "companion", launcher), path.join(incomplete, "companion", launcher));
+    if (target !== "win-x64") await fs.chmod(path.join(incomplete, "companion", launcher), 0o755);
+    await assert.rejects(invoke("start", incomplete), error => {
+      assert.match(error.stdout, /RUNTIME_MISSING.*Stage: launcher/);
+      assert.match(error.stdout, /Extract the entire ZIP/);
+      assert.match(error.stdout, /npm run start:companion/);
+      assert(!error.stdout.includes(temp), "Launcher help must not expose an absolute user path");
+      return true;
+    });
     const runtime = await execFile(path.join(bundle, runtimeName), ["--version"], { env: { ...process.env, PATH: "" } });
     assert.equal(runtime.stdout.trim(), "v22.23.2");
     await invoke("start"); running = true;
