@@ -1,4 +1,9 @@
 // Same desktop presentation and collector; Android only collects on a tap.
+const updateSharedClock = updateNextRefresh;
+updateNextRefresh = () => {
+  updateSharedClock();
+  $('nextRefresh').textContent = '仅手动刷新；不在后台采集。完整数据超过35分钟后暂停估算。';
+};
 function renderAndroid(state) {
   render(state);
   if (state.status === 'loading' && !state.updatedAt) {
@@ -35,7 +40,6 @@ $('confirmLogout').addEventListener('click', async () => { $('logoutDialog').clo
 chrome.runtime.onMessage.addListener(message => { if (message?.type === 'attendance-state') renderAndroid(message.state); });
 function tick() {
   updateNextRefresh();
-  $('nextRefresh').textContent = '仅手动刷新；不在后台采集。完整数据超过35分钟后暂停估算。';
 }
 send('get-state').then(tick);
 setInterval(tick, 1000);

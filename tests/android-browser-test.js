@@ -82,6 +82,7 @@ execFileSync(process.execPath, [path.join(root, 'scripts/prepare-android.js')]);
     async function refreshFixture() {
       await ui.locator('#refresh').click();
       await ui.waitForFunction(() => !document.querySelector('#refresh').disabled);
+      assert.match(await ui.locator('#nextRefresh').textContent(), /仅手动刷新/);
       return structuredClone(state);
     }
     const complete = await refreshFixture();
