@@ -13,16 +13,18 @@ execFileSync(process.execPath, [path.join(root, 'scripts/prepare-android.js')]);
     const context = await browser.newContext();
     const school = await context.newPage();
     let mode = 'normal', state = {}, view = 'calendar', collecting = false;
+    let attendanceFixtureDay = '2030-04-13', attendanceFixtureWeekday = '星期六';
     const operations = [], schoolRequests = [], writes = [], violations = [];
     await school.route('**/*', async route => {
       const url = new URL(route.request().url());
-      schoolRequests.push({ path: url.pathname, page: Number(url.searchParams.get('pageNo') || 1), size: Number(url.searchParams.get('pageSize') || 10) });
+      schoolRequests.push({ path: url.pathname, date: url.searchParams.get('swipeDate'), page: Number(url.searchParams.get('pageNo') || 1), size: Number(url.searchParams.get('pageSize') || 10) });
       if (url.hostname === 'sts.slai.edu.cn') return route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<h1>虚构学校登录</h1>' });
       if (mode === 'auth') return route.fulfill({ status: 302, headers: { location: 'https://sts.slai.edu.cn/signin' }, body: '' });
-      if (url.pathname.endsWith('/attendList')) return route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<h1>月度考勤统计汇总</h1><input value="2030-04"><p>学号: 000000000</p><table><tr><td>2030-04-08</td><td>周一</td><td>工作日</td><td>02:00:00</td></tr></table>' });
+      if (url.pathname.endsWith('/attendList')) return route.fulfill({ contentType: 'text/html; charset=utf-8', body: `<h1>月度考勤统计汇总</h1><input value="2030-04"><p>学号: 000000000</p><table><tr><td>${mode === 'midnight' ? attendanceFixtureDay : '2030-04-08'}</td><td>${mode === 'midnight' ? attendanceFixtureWeekday.replace('星期', '周') : '周一'}</td><td>工作日</td><td>02:00:00</td></tr></table>` });
       if (url.pathname.endsWith('/list')) {
-        const fixtureMode = mode.startsWith('empty') ? 'empty' : mode === 'resize-error' ? 'wide' : mode;
-        const html = swipeHtml(undefined, { mode: fixtureMode, pageSizeControl: fixtureMode === 'wide', emptyCount: mode !== 'empty-no-count' });
+        const date = url.searchParams.get('swipeDate');
+        const fixtureMode = mode === 'midnight' ? date === attendanceFixtureDay ? 'normal' : 'empty' : mode.startsWith('empty') ? 'empty' : mode === 'resize-error' ? 'wide' : mode;
+        const html = swipeHtml(date || undefined, { mode: fixtureMode, pageSizeControl: fixtureMode === 'wide' || mode === 'midnight', emptyCount: !['empty-no-count', 'midnight'].includes(mode) });
         if (route.request().resourceType() === 'document') {
           assert.equal(url.searchParams.get('pageSize'), '90');
           return route.fulfill({ contentType: 'text/html; charset=utf-8', body: mode === 'script-url' ? html.replaceAll('href="javascript:;"', 'href="javascript:window.PRIVATE_FIXTURE=true"') : html });
@@ -157,6 +159,26 @@ execFileSync(process.execPath, [path.join(root, 'scripts/prepare-android.js')]);
     assert.equal(recovered.status, 'ok'); assert.equal(recovered.diagnostic, null);
     assert(!JSON.stringify(writes).includes('000000000'));
     await ui.locator('#calendarView').click();
+    mode = 'midnight';
+    for (const [civilDate, attendanceDay, weekday] of [['2030-04-14', '2030-04-13', '星期六'], ['2030-04-15', '2030-04-14', '星期日']]) {
+      attendanceFixtureDay = attendanceDay; attendanceFixtureWeekday = weekday;
+      await ui.clock.setSystemTime(new Date(civilDate + 'T00:16:00+08:00'));
+      const start = schoolRequests.length;
+      const night = await refreshFixture();
+      assert.equal(night.status, 'ok'); assert.equal(night.diagnostic, null);
+      assert.equal(night.lastCompleteToday.date, attendanceDay);
+      assert.equal(night.todaySwipes.length, 6, 'An empty civil date after midnight must not erase the previous day');
+      assert.deepEqual(schoolRequests.slice(start).filter(item => item.path.endsWith('/list')).map(({date, page}) => [date, page]), [[attendanceDay, 1], [attendanceDay, 1], [civilDate, 1]]);
+      assert((await ui.locator('#todayLabel').innerText()).includes(weekday));
+      assert.equal(await ui.locator('.calendar-day[aria-current=date]').getAttribute('data-date'), attendanceDay);
+      assert.equal(await ui.locator('#todayDuration').innerText(), '03:00:00');
+      assert.equal(await ui.locator('#progressRing').getAttribute('aria-valuenow'), '10800');
+      assert.match(await ui.locator('#timelineCanvas').getAttribute('aria-label'), /06:00:00—07:00:00.*08:00:00—09:00:00.*10:00:00—11:00:00/);
+      await ui.locator('.calendar-day[aria-current=date]').click();
+      assert.equal(await ui.locator('#dayDialogDuration').innerText(), '03:00:00');
+      await ui.keyboard.press('Escape');
+      await ui.locator('#diagnosticCard').waitFor({ state: 'hidden' });
+    }
     await ui.mouse.move(0, 0);
     fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
     for (const theme of ['light', 'dark']) {

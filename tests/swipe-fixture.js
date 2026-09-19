@@ -51,6 +51,8 @@ function swipeHtml(day = fixtureDay, { mode = 'normal', pageSize = 10, pageSizeC
           const target = new URL('/a/edu/acm/swipe/list', location.origin);
           target.searchParams.set('pageNo', number);
           target.searchParams.set('pageSize', size);
+          const date = new URL(location.href).searchParams.get('swipeDate');
+          if (date) target.searchParams.set('swipeDate', date);
           try {
             const response = await fetch(target);
             if (response.ok) render(await response.json());
