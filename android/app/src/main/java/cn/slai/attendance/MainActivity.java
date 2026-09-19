@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 public final class MainActivity extends Activity {
     static final String ORIGIN = "https://appassets.androidplatform.net";
     static final String HOME = ORIGIN + "/assets/web/index.html";
+    static final String SCHOOL_HINT = "在学校页面完成登录后，点击“返回考勤”会刷新一次。可双指缩放页面。";
     WebView dashboard;
     SchoolSession school;
     FrameLayout root;
@@ -44,11 +45,11 @@ public final class MainActivity extends Activity {
         setContentView(root);
         school = new SchoolSession(this);
         schoolPanel = new LinearLayout(this); schoolPanel.setOrientation(LinearLayout.VERTICAL);
-        Button back = new Button(this); back.setText("返回考勤"); back.setOnClickListener(view -> hideSchool());
-        schoolStatus = new TextView(this); schoolStatus.setText("在学校页面完成登录后，返回考勤并点击刷新。可双指缩放页面。");
+        Button back = new Button(this); back.setText("返回考勤"); back.setOnClickListener(view -> returnToAttendance());
+        schoolStatus = new TextView(this); schoolStatus.setText(SCHOOL_HINT);
         schoolStatus.setPadding(16, 8, 16, 8); schoolStatus.setTextIsSelectable(true);
         school.visibleError = (code, details) -> schoolStatus.setText(navigationDiagnostic(code, details));
-        school.visibleLoaded = () -> schoolStatus.setText("在学校页面完成登录后，返回考勤并点击刷新。可双指缩放页面。");
+        school.visibleLoaded = () -> schoolStatus.setText(SCHOOL_HINT);
         schoolPanel.addView(back); schoolPanel.addView(schoolStatus);
         schoolPanel.addView(school.web, new LinearLayout.LayoutParams(-1, 0, 1));
         root.addView(schoolPanel, new FrameLayout.LayoutParams(-1, -1));
@@ -141,7 +142,7 @@ public final class MainActivity extends Activity {
                     if (school.rendererGone) { result.fail("ANDROID_RENDERER_GONE"); return; }
                     if (school.collecting) { result.fail("ANDROID_BUSY"); return; }
                     schoolVisible = true; schoolPanel.bringToFront();
-                    schoolStatus.setText("在学校页面完成登录后，返回考勤并点击刷新。可双指缩放页面。");
+                    schoolStatus.setText(SCHOOL_HINT);
                     school.web.loadUrl(SchoolSession.PORTAL); result.ok(true);
                 }
                 case "school.logout" -> {
@@ -157,6 +158,12 @@ public final class MainActivity extends Activity {
         } catch (Exception ignored) { result.fail("UNEXPECTED_ERROR"); }
     }
     void hideSchool() { schoolVisible = false; CookieManager.getInstance().flush(); if (dashboard != null) dashboard.bringToFront(); }
+    void returnToAttendance() {
+        if (!schoolVisible) return;
+        hideSchool();
+        // The explicit return tap uses the same guarded UI refresh as its button.
+        if (dashboard != null && HOME.equals(dashboard.getUrl())) dashboard.evaluateJavascript("document.getElementById('refresh')?.click();", null);
+    }
     static String navigationDiagnostic(String code, JSONObject details) {
         String reason = switch (code) {
             case "ANDROID_DNS_FAILED" -> "学校域名解析失败。请检查手机网络能否打开学校网站。";

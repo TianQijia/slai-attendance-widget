@@ -86,7 +86,7 @@ execFileSync(process.execPath, [path.join(root, 'scripts/prepare-android.js')]);
     assert.deepEqual(schoolRequests, [], 'Opening the APK UI must never request school data');
     await ui.locator('#login').click();
     assert(operations.includes('school.show'));
-    assert(!operations.includes('collection.begin'), 'Returning from login still requires an explicit refresh');
+    assert(!operations.includes('collection.begin'), 'Opening the school page must not start collection');
     async function refreshFixture() {
       await ui.locator('#refresh').click();
       await ui.waitForFunction(() => !document.querySelector('#refresh').disabled);

@@ -109,9 +109,22 @@ public final class AndroidFlowTest {
         while (!Boolean.TRUE.equals(eval(activity.school.web, "!!document.querySelector('#fixtureLogin')")) && System.currentTimeMillis() < end) Thread.sleep(100);
         assertEquals(true, eval(activity.school.web, "!!document.querySelector('#fixtureLogin')"));
         assertEquals("undefined", eval(activity.school.web, "typeof SlaiNative"));
+        assertTrue(((String) eval(activity.school.web, "navigator.userAgent")).contains("Windows NT"));
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
+            assertEquals(false, eval(activity.school.web, "navigator.userAgentData.mobile"));
+            assertEquals("Windows", eval(activity.school.web, "navigator.userAgentData.platform"));
+        }
         eval(activity.school.web, "document.querySelector('#fixtureLogin').click();true");
         Thread.sleep(500);
-        main(() -> activity.hideSchool());
+        assertFalse(activity.school.collecting);
+        main(() -> {
+            // Exercise the actual native button, including a rapid second tap.
+            activity.schoolPanel.getChildAt(0).performClick();
+            activity.schoolPanel.getChildAt(0).performClick();
+        });
+        until("document.querySelector('#refresh').disabled");
+        until("!document.querySelector('#refresh').disabled");
+        assertFalse(activity.schoolVisible);
     }
     @Test public void finalApkManualFlow() throws Exception {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
@@ -129,12 +142,6 @@ public final class AndroidFlowTest {
             login();
             String cookie = CookieManager.getInstance().getCookie(SchoolSession.PORTAL);
             assertTrue(cookie != null && cookie.contains("fixture_session=1"));
-            assertTrue((String) eval(activity.school.web, "navigator.userAgent"), ((String) eval(activity.school.web, "navigator.userAgent")).contains("Windows NT"));
-            if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
-                assertEquals(false, eval(activity.school.web, "navigator.userAgentData.mobile"));
-                assertEquals("Windows", eval(activity.school.web, "navigator.userAgentData.platform"));
-            }
-            refresh();
             JSONObject good = cached();
             assertEquals(good.optJSONObject("diagnostic") == null ? "" : good.getJSONObject("diagnostic").optString("code"), "ok", good.getString("status"));
             assertEquals(6, good.getJSONArray("todaySwipes").length());
@@ -189,9 +196,10 @@ public final class AndroidFlowTest {
             mode = "normal"; clearCookies(); refresh();
             assertEquals("auth", cached().getString("status"));
             assertEquals("AUTH_EXPIRED", cached().getJSONObject("diagnostic").getString("code"));
-            login(); pages.clear(); refresh();
+            pages.clear(); login();
             assertEquals("ok", cached().getString("status"));
             assertTrue(cached().isNull("diagnostic"));
+            assertEquals(Arrays.asList(1, 2, 3), new ArrayList<>(pages));
             // Cache and school session survive Activity recreation, without a refresh.
             JSONObject beforeRecreate = cached(); int beforeRequests = requests.get();
             scenario.recreate(); scenario.onActivity(value -> activity = value);
