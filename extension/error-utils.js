@@ -41,23 +41,17 @@
     UNEXPECTED_ERROR: ["发生尚未分类的异常，直接原因尚未识别", "复制包含失败阶段和异常类型的排错信息反馈。"]
   };
   const stages = {
-    network_probe: "检测本机网络接口", network_inspect: "读取系统网络配置", network_report: "保存网络检测报告",
-    bridge_settings: "设置本机连接", bridge_push: "扩展推送本机状态", companion_start: "启动伴随服务",
-    companion_read: "读取服务缓存", companion_write: "保存服务缓存", companion_request: "处理本机请求",
-    viewer_fetch: "手机读取状态", viewer_access: "读取或保存查看权限", remote_refresh: "手机请求学校刷新", autostart: "设置登录后启动",
     open_portal: "打开学校首页", find_attendance: "查找考勤入口",
     open_summary: "打开月度汇总", read_summary: "读取月度汇总",
     open_swipes: "打开今日明细", read_swipes: "读取明细分页",
     advance_swipes: "切换下一页明细", save_state: "保存考勤结果",
-    read_cache: "读取本机缓存", widget_request: "小窗联系扩展后台", unknown: "阶段尚未记录"
+    read_cache: "读取本机缓存", widget_request: "界面请求本机组件", unknown: "阶段尚未记录"
   };
   const operations = {
-    bridge_push: "发送脱敏缓存", configure_bridge: "保存配对设置", http_request: "请求本地服务", listen: "监听端口", persist: "原子保存缓存",
     create_tab: "创建采集页", get_tab: "获取采集页", navigate: "等待页面加载",
     inject_reader: "注入读取脚本", read_page: "运行页面读取脚本", advance_page: "点击分页控件",
     storage_get: "读取本机存储", storage_set: "写入本机存储", schedule: "设置刷新计划",
-    read_link: "读取手机查看链接",
-    get_state: "获取小窗状态", refresh: "请求刷新", login: "打开登录页", open_portal: "打开学校系统"
+    get_state: "获取考勤状态", refresh: "请求刷新", login: "打开登录页", open_portal: "打开学校系统", logout: "退出学校账号"
   };
   const methods = ["findAttendanceUrl", "extractAttendance", "extractSwipePage", "advanceSwipePage"];
   const errorNames = ["Error", "TypeError", "ReferenceError", "RangeError", "SyntaxError", "DOMException", "TimeoutError", "SecurityError", "QuotaExceededError"];
@@ -119,7 +113,7 @@
     if (!d) return "";
     const description = describeDiagnostic(d);
     const lines = ["SLAI 考勤小组件 · 排错信息"];
-    if (/^\d+\.\d+\.\d+(?:\.\d+)?$/.test(version)) lines.push(`扩展版本：${version}`);
+    if (/^\d+\.\d+\.\d+(?:\.\d+)?$/.test(version)) lines.push(`应用版本：${version}`);
     if (d.occurredAt) lines.push(`发生时间：${d.occurredAt}`);
     lines.push(`错误代码：${d.code}`, `失败阶段：${description.stage}`, `直接原因：${description.reason}`);
     if (d.operation) lines.push(`失败操作：${operations[d.operation]}`);

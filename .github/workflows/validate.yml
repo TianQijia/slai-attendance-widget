@@ -56,11 +56,17 @@ jobs:
           target: default
           arch: x86_64
           disable-animations: true
-          script: npm run test:android
+          script: |
+            npm run test:android
+            mkdir -p test-results
+            adb pull /sdcard/Android/data/cn.slai.attendance/files/android-verified.png test-results/android-device.png
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
         with:
           name: slai-android-validation
           path: |
             dist/*.apk
             dist/ANDROID-SHA256SUMS.txt
             android/app/build/reports/androidTests/
+            android/app/build/reports/lint-results-release.html
+            test-results/android-device.png

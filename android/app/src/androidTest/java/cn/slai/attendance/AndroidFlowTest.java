@@ -9,6 +9,7 @@ import android.webkit.WebView;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.lifecycle.Lifecycle;
 import androidx.webkit.WebViewFeature;
 import org.json.JSONObject;
 import org.json.JSONTokener;
@@ -136,6 +137,21 @@ public final class AndroidFlowTest {
             int completed = requests.get();
             Thread.sleep(1500); assertEquals(completed, requests.get());
 
+            // Leaving the foreground cancels this attempt; resume never starts another.
+            pages.clear();
+            eval(activity.dashboard, "document.querySelector('#refresh').click();true");
+            long firstPageDeadline = System.currentTimeMillis() + 15000;
+            while (pages.isEmpty() && System.currentTimeMillis() < firstPageDeadline) Thread.sleep(50);
+            assertFalse("Manual collection did not reach the first page", pages.isEmpty());
+            scenario.moveToState(Lifecycle.State.CREATED);
+            int stopped = requests.get(); Thread.sleep(1800); assertEquals(stopped, requests.get());
+            scenario.moveToState(Lifecycle.State.RESUMED);
+            until("!document.querySelector('#refresh').disabled");
+            assertEquals("ANDROID_COLLECTION_INTERRUPTED", cached().getJSONObject("diagnostic").getString("code"));
+            assertEquals(good.getString("updatedAt"), cached().getString("updatedAt"));
+            int resumed = requests.get(); Thread.sleep(1600); assertEquals(resumed, requests.get());
+            refresh(); good = cached(); assertEquals("ok", good.getString("status"));
+
             mode = "http"; refresh();
             JSONObject failed = cached();
             assertEquals("partial", failed.getString("status"));
@@ -149,6 +165,15 @@ public final class AndroidFlowTest {
             login(); pages.clear(); refresh();
             assertEquals("ok", cached().getString("status"));
             assertTrue(cached().isNull("diagnostic"));
+            // Cache and school session survive Activity recreation, without a refresh.
+            JSONObject beforeRecreate = cached(); int beforeRequests = requests.get();
+            scenario.recreate(); scenario.onActivity(value -> activity = value);
+            until("typeof currentState !== 'undefined' && !!currentState && currentState.status === 'ok'");
+            installFixture(); setClock();
+            assertEquals(beforeRecreate.getString("updatedAt"), cached().getString("updatedAt"));
+            assertEquals(beforeRequests, requests.get());
+            assertTrue(CookieManager.getInstance().getCookie(SchoolSession.PORTAL).contains("fixture_session=1"));
+            refresh(); assertEquals("ok", cached().getString("status"));
             Bitmap screenshot = InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();
             File output = new File(activity.getExternalFilesDir(null), "android-verified.png");
             try (FileOutputStream stream = new FileOutputStream(output)) { screenshot.compress(Bitmap.CompressFormat.PNG, 100, stream); }
