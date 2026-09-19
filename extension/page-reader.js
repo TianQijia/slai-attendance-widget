@@ -129,16 +129,43 @@
       clean(row.textContent).match(/\d{4}-\d{2}-\d{2} [0-2]\d:[0-5]\d:[0-5]\d/)?.[0]
     ).filter(Boolean);
     const next = nextSwipeControl(current);
-    const loading = Array.from(document.querySelectorAll('.layui-table-init')).some((el) => el.getClientRects().length > 0);
+    const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+    const loading = Array.from(document.querySelectorAll('.layui-table-init, .layui-table-loading, [aria-busy="true"]')).some(visible);
+    const emptyText = /^(?:暂无|没有|无)(?:相关)?(?:数据|记录)[。.!！]?$/;
+    const main = document.querySelector('.layui-table-main');
+    const emptyMarker = Array.from((main || document).querySelectorAll('.layui-none, table td'))
+      .some(el => visible(el) && emptyText.test(clean(el.innerText)));
+    const hasDataCells = swipeRows().some(row => Array.from(row.querySelectorAll('td'))
+      .some(cell => clean(cell.innerText) && !emptyText.test(clean(cell.innerText))));
+    // Empty Layui tables can omit the pager or leave an inert next button.
+    // A bare/hidden/loading table or a positive total is not proof of no data.
+    const empty = !hasDataCells && rowTimes.length === 0 && (total === 0 || (!Number.isFinite(total) && emptyMarker));
+    const sizeControl = swipePageSizeControl();
     return {
-      ready: !loading && (records.length > 0 || /共\s*\d+\s*条/.test(countText)),
+      ready: !loading && (rowTimes.length > 0 || total > 0 || empty),
       records,
       pagination: {
-        current, total: Number.isFinite(total) ? total : null,
+        current, total: Number.isFinite(total) ? total : empty ? 0 : null,
         rowCount: rowTimes.length, signature: JSON.stringify(rowTimes),
-        hasNext: Boolean(next)
+        hasNext: !empty && Boolean(next),
+        canSetPageSize: !empty && !!sizeControl && sizeControl.value !== '90'
       }
     };
+  }
+
+  function swipePageSizeControl() {
+    return Array.from(document.querySelectorAll('.layui-laypage-limits select, .pagination select[name="pageSize"], .pager select[name="pageSize"]'))
+      .find(select => !select.disabled && Array.from(select.options).some(option => option.value === '90' && !option.disabled)) || null;
+  }
+
+  function setSwipePageSize() {
+    const page = extractSwipePage();
+    const select = swipePageSizeControl();
+    if (!page.ready || page.pagination.current !== 1 || !page.pagination.canSetPageSize || !select) return false;
+    select.value = '90';
+    // Use the portal's change handler so its Ajax limit and filters agree.
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
   }
 
   function nextSwipeControl(current) {
@@ -153,6 +180,7 @@
 
   function advanceSwipePage() {
     const page = extractSwipePage();
+    if (!page.ready || !page.pagination.hasNext) return false;
     const next = nextSwipeControl(page.pagination.current);
     if (!next) return false;
     // Use the portal's own control, preserving its form filters and session.
@@ -179,5 +207,5 @@
     return true;
   }
 
-  globalThis.__slaiAttendance = { findAttendanceUrl, extractAttendance, extractSwipeRecords, extractSwipePage, advanceSwipePage };
+  globalThis.__slaiAttendance = { findAttendanceUrl, extractAttendance, extractSwipeRecords, extractSwipePage, setSwipePageSize, advanceSwipePage };
 })();

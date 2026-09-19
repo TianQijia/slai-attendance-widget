@@ -4,15 +4,17 @@
 
 <img src="docs/demo.png" alt="桌面浅色界面，记录均为虚构" width="320"> <img src="docs/demo-dark.png" alt="桌面深色界面，记录均为虚构" width="320">
 
-## 当前版本：1.4.0
+## 当前版本：1.4.1
 
+- 空明细正常显示零条，不再因空表误报分页超时；凌晨第二个日期的诊断页码从第一页计算。
+- 明细优先使用 90 条／页，超过一页继续串行读取，跨天合并两个自然日的记录。
 - 修复 issue #4：Layui 的 `javascript:;` 空链接不再触发 Chrome CSP 报错，保留正常翻页事件。真正依赖脚本链接的控件会明确提示 `SWIPE_SCRIPT_URL`，并保留可靠快照。
 - 新增独立 Android APK，直接在手机登录和采集学校数据，无需电脑或局域网 companion。
 - 安卓界面复用桌面端的校徽、圆环、日历／列表、详情、进出时间轴和系统明暗主题。
 - 安卓只在点击刷新时采集，Cookie 过期后重新登录；桌面 Chrome 保持每 30 分钟同步。
 - companion 已从当前代码和构建中移除，旧版本说明与公开 Release 保留。
 
-构建产物为 `slai-attendance-widget-v1.4.0.zip` 和 `slai-attendance-android-v1.4.0.apk`。已发布版本以 [GitHub Releases](https://github.com/TianQijia/slai-attendance-widget/releases) 为准；开发构建不表示已公开发布。
+构建产物为 `slai-attendance-widget-v1.4.1.zip` 和 `slai-attendance-android-v1.4.1.apk`。已发布版本以 [GitHub Releases](https://github.com/TianQijia/slai-attendance-widget/releases) 为准；开发构建不表示已公开发布。
 
 ## 安装电脑扩展
 
@@ -42,7 +44,7 @@
 - 工作日目标为 6 小时；历史时长和工作日分类采用学校汇总。缺失日期标为待同步，未来日期不误标为零时长。
 - 今日只使用完整学校道闸明细；忽略宿舍记录。连续进门取最晚一次，连续出门取最早一次，再累计有效闭合区间。
 - **跨越 05:00 的整段不计入任一天，恰好 05:00 出校也作废。** 未闭合区间仅临时估算，到切日停止。
-- 凌晨串行读取前一天与当天自然日记录；翻页／跨自然日请求间隔 1.5 秒，两天合计最多 50 页。
+- 明细优先使用 90 条／页；学校页面仍提供其他页大小时保持完整翻页。凌晨串行读取前一天与当天自然日记录；翻页／切换页大小／跨自然日请求间隔 1.5 秒，两天合计最多 50 次明细页请求。
 - 分页失败、总数变化、登录失效或切日竞态都不会把部分明细写成完整成功。已读到的学校历史汇总仍可展示；今日冻结可靠快照或显示暂无可靠数据。
 - 绿点表示达到 6 小时（含节假日）；黄点仅标注未达标工作日。缺失、未来和未达标节假日不标点。
 
@@ -76,7 +78,7 @@ npm run build
 npm run test:install
 ```
 
-可设置 `CHROMIUM_EXECUTABLE_PATH` 指向本机 Chrome。最终 ZIP 安装测试使用临时浏览器配置，验证真实隔离脚本、三页 23 条记录、CSP console/CDP 日志、失败回退、诊断复制及恢复。
+可设置 `CHROMIUM_EXECUTABLE_PATH` 指向本机 Chrome。最终 ZIP 安装测试使用临时浏览器配置，验证真实隔离脚本、空明细、三页 23 条及每页 90 条的 93 条记录、CSP console/CDP 日志、失败回退、诊断复制及恢复。
 
 安卓需要 JDK 17+、Android SDK 平台 35、Build Tools 35.0.0，并配置 `ANDROID_HOME`。Gradle Wrapper 固定版本和 SHA-256。
 

@@ -58,7 +58,7 @@ async function runReader(tabId, method) {
   let operation = "inject_reader";
   try {
     await chrome.scripting.executeScript({ target: { tabId }, files: ["page-reader.js"] });
-    operation = method === "advanceSwipePage" ? "advance_page" : "read_page";
+    operation = method === "advanceSwipePage" ? "advance_page" : method === "setSwipePageSize" ? "set_page_size" : "read_page";
     const result = await chrome.scripting.executeScript({
       target: { tabId },
       func: (methodName) => globalThis.__slaiAttendance?.[methodName]?.() ?? null,
@@ -106,12 +106,13 @@ async function collectSwipePages(tabId, queryDate, budget = { pages: 0 }, window
   let previous = null;
   let rowsRead = 0;
   let expectedTotal = null;
+  let pageSizeConfigured = false;
   for (let index = 0; index < 50; index++) {
     if (budget.pages >= 50) break;
     const deadline = Date.now() + 15000;
     let page = null;
     let lastReaderError = null;
-    const details = { stage: "read_swipes", page: budget.pages + 1, rowsRead, expectedTotal, timeoutMs: 15000 };
+    const details = { stage: "read_swipes", page: index + 1, rowsRead, expectedTotal, timeoutMs: 15000 };
     do {
       let tab;
       try {
@@ -127,6 +128,15 @@ async function collectSwipePages(tabId, queryDate, budget = { pages: 0 }, window
           if (candidate?.pagination) details.currentPage = candidate.pagination.current;
           if (candidate?.ready && candidate.pagination && (!previous ||
             (candidate.pagination.current === previous.current + 1 && candidate.pagination.signature !== previous.signature))) {
+            if (!previous && !pageSizeConfigured && candidate.pagination.canSetPageSize && budget.pages < 49) {
+              pageSizeConfigured = true;
+              // Resizing makes another school request, with the same pacing and budget.
+              await delay(1500);
+              if (await runReader(tabId, 'setSwipePageSize') === true) {
+                budget.pages++;
+                continue;
+              }
+            }
             page = candidate;
             break;
           }
@@ -152,7 +162,7 @@ async function collectSwipePages(tabId, queryDate, budget = { pages: 0 }, window
       const at = timestampMs(record.timestamp);
       if (at >= window.start && at < window.end) records.set(record.timestamp + '|' + record.direction, record);
     }
-    if (!meta.hasNext) {
+    if (!meta.hasNext || (expectedTotal !== null && rowsRead >= expectedTotal)) {
       if (expectedTotal !== null && rowsRead !== expectedTotal) throw readerError('SWIPE_INCOMPLETE', '刷卡记录未读取完整', { ...pageDetails, rowsRead, expectedTotal });
       return [...records.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
     }
@@ -165,7 +175,7 @@ async function collectSwipePages(tabId, queryDate, budget = { pages: 0 }, window
       if (advanced?.errorCode === 'SWIPE_SCRIPT_URL') throw readerError('SWIPE_SCRIPT_URL', '分页控件使用未支持的脚本链接');
       if (advanced !== true) throw readerError('SWIPE_NEXT', '无法翻到下一页');
     } catch (error) {
-      throw withErrorDetails(error, { stage: "advance_swipes", operation: "advance_page", page: budget.pages + 1, currentPage: meta.current, rowsRead, expectedTotal });
+      throw withErrorDetails(error, { stage: "advance_swipes", operation: "advance_page", page: meta.current + 1, currentPage: meta.current, rowsRead, expectedTotal });
     }
   }
   throw readerError('SWIPE_LIMIT', '刷卡页数超过安全上限', { stage: "read_swipes", page: 50, rowsRead, expectedTotal });
@@ -245,7 +255,7 @@ async function scrapeAttendance({ sourceTabId = null } = {}) {
       stage = "open_swipes";
       const recordsUrl = attendanceUrl.replace(
         /\/edu\/acm\/swipe\/attendList(?:[?#].*)?$/,
-        `/edu/acm/swipe/list?userNo=${encodeURIComponent(studentNumber)}&swipeDate=${civilDate}`
+        `/edu/acm/swipe/list?userNo=${encodeURIComponent(studentNumber)}&swipeDate=${civilDate}&pageSize=90`
       );
       if (recordsUrl !== attendanceUrl) {
         await chrome.tabs.update(tab.id, { url: recordsUrl });
@@ -296,4 +306,3 @@ function refreshAttendance(options = {}) {
   }
   return refreshPromise;
 }
-

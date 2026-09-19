@@ -49,11 +49,11 @@
   };
   const operations = {
     create_tab: "创建采集页", get_tab: "获取采集页", navigate: "等待页面加载",
-    inject_reader: "注入读取脚本", read_page: "运行页面读取脚本", advance_page: "点击分页控件",
+    inject_reader: "注入读取脚本", read_page: "运行页面读取脚本", advance_page: "点击分页控件", set_page_size: "设置每页 90 条",
     storage_get: "读取本机存储", storage_set: "写入本机存储", schedule: "设置刷新计划",
     get_state: "获取考勤状态", refresh: "请求刷新", login: "打开登录页", open_portal: "打开学校系统", logout: "退出学校账号"
   };
-  const methods = ["findAttendanceUrl", "extractAttendance", "extractSwipePage", "advanceSwipePage"];
+  const methods = ["findAttendanceUrl", "extractAttendance", "extractSwipePage", "setSwipePageSize", "advanceSwipePage"];
   const errorNames = ["Error", "TypeError", "ReferenceError", "RangeError", "SyntaxError", "DOMException", "TimeoutError", "SecurityError", "QuotaExceededError"];
   const networkCodes = ["ERR_NAME_NOT_RESOLVED", "ERR_CONNECTION_TIMED_OUT", "ERR_CONNECTION_RESET", "ERR_CONNECTION_REFUSED", "ERR_INTERNET_DISCONNECTED", "ERR_NETWORK_CHANGED", "ERR_CERT_AUTHORITY_INVALID", "ERR_CERT_DATE_INVALID", "ERR_CERT_COMMON_NAME_INVALID", "ERR_SSL_PROTOCOL_ERROR", "ERR_TUNNEL_CONNECTION_FAILED", "ERR_PROXY_CONNECTION_FAILED"];
   const systemCodes = { EACCES: "操作系统拒绝访问", EPERM: "操作系统不允许此操作", ENOSPC: "存储空间不足", EIO: "操作系统报告输入输出错误", EADDRINUSE: "地址已被占用", EADDRNOTAVAIL: "此地址当前不可用", EMFILE: "此进程已打开过多文件", ENFILE: "系统已打开过多文件", ENOENT: "所需文件或目录不存在", ECONNREFUSED: "连接被拒绝", ECONNRESET: "连接被重置", ETIMEDOUT: "连接超时", EHOSTUNREACH: "目标主机不可达", ENETUNREACH: "目标网络不可达" };

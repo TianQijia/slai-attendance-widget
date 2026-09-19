@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 
 final class SchoolSession {
     static final String PORTAL = "https://stu.slai.edu.cn/";
-    static final Set<String> METHODS = new java.util.HashSet<>(java.util.Arrays.asList("findAttendanceUrl", "extractAttendance", "extractSwipePage", "advanceSwipePage"));
+    static final Set<String> METHODS = new java.util.HashSet<>(java.util.Arrays.asList("findAttendanceUrl", "extractAttendance", "extractSwipePage", "setSwipePageSize", "advanceSwipePage"));
     final WebView web;
     final Handler handler = new Handler(Looper.getMainLooper());
     final String reader;
@@ -110,7 +110,7 @@ final class SchoolSession {
         String script = "(() => { try { " + reader + ";return {ok:true,value:globalThis.__slaiAttendance[" + JSONObject.quote(method) + "]()}; } catch (_) {return {ok:false};} })()";
         web.evaluateJavascript(script, raw -> {
             if (pending != result) return;
-            if (before != generation && !"advanceSwipePage".equals(method)) { fail("SCRIPT_CONTEXT_LOST", new JSONObject()); return; }
+            if (before != generation && !"advanceSwipePage".equals(method) && !"setSwipePageSize".equals(method)) { fail("SCRIPT_CONTEXT_LOST", new JSONObject()); return; }
             try {
                 JSONObject response = new JSONObject(raw);
                 if (!response.optBoolean("ok")) { fail("UNEXPECTED_ERROR", new JSONObject()); return; }

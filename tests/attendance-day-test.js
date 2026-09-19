@@ -17,7 +17,7 @@ function harness({ instant, pages, onRead = () => {}, summaryMonth = "2030-04", 
     storage: { local: { setAccessLevel: async () => {}, get: async key => key === null ? structuredClone(store) : { [key]: structuredClone(store[key]) }, set: async values => Object.assign(store, structuredClone(values)), remove: async keys => { for (const key of keys) delete store[key]; } } },
     runtime: { onInstalled: event, onStartup: event, onMessage: event, sendMessage: async () => {} },
     alarms: { onAlarm: event, create: async name => alarms.add(name), clear: async name => alarms.delete(name) }, action: { onClicked: event }, windows: { onRemoved: event },
-    tabs: { onUpdated: event, onRemoved: event, get: async () => ({ id: 1, url, status: "complete" }), update: async (_id, value) => { url = value.url; page = 0; queries.push(new URL(url).searchParams.get("swipeDate")); } }
+    tabs: { onUpdated: event, onRemoved: event, get: async () => ({ id: 1, url, status: "complete" }), update: async (_id, value) => { url = value.url; page = 0; assert.equal(new URL(url).searchParams.get('pageSize'), '90'); queries.push(new URL(url).searchParams.get("swipeDate")); } }
   } });
   context.importScripts = (...names) => names.forEach(name => vm.runInContext(fs.readFileSync(path.join(root, "extension", name), "utf8"), context));
   vm.runInContext(fs.readFileSync(path.join(root, "extension/background.js"), "utf8"), context);
@@ -55,6 +55,13 @@ function harness({ instant, pages, onRead = () => {}, summaryMonth = "2030-04", 
     onRead: ({ date, setTime }) => { if (date === before) setTime(after + "T00:00:01+08:00"); } });
   await midnight.run(); assert.deepEqual(midnight.queries, [before, after]);
   assert.equal(midnight.store.attendanceState.status, "ok");
+
+  const emptyAfterMidnight = harness({ instant: after + 'T00:16:00+08:00', pages: { [before]: pages[before] }, cached: complete });
+  await emptyAfterMidnight.run();
+  assert.deepEqual(emptyAfterMidnight.queries, [before, after]);
+  assert.equal(emptyAfterMidnight.store.attendanceState.status, 'ok');
+  assert.equal(emptyAfterMidnight.store.attendanceState.diagnostic, null);
+  assert.equal(emptyAfterMidnight.store.attendanceState.todaySwipes.length, 3, 'An empty second civil date must retain the previous date in the same attendance day');
 
   const crossing = harness({ instant: after + "T04:59:59+08:00", pages, cached: complete,
     onRead: ({ setTime }) => setTime(after + "T05:00:00+08:00") });

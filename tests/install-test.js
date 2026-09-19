@@ -55,10 +55,15 @@ const root = path.resolve(__dirname, "..");
         if (mode === "auth-on-swipes") return route.fulfill({ status: 302, headers: { location: "https://sts.slai.edu.cn/signin" }, body: "" });
         const number = Number(url.searchParams.get("pageNo") || 1);
         visitedPages.push(number);
-        if (route.request().resourceType() === "document") return route.fulfill({ contentType: "text/html; charset=utf-8", body: mode === "script-url" ? swipeHtml(testDate).replaceAll('href="javascript:;"', 'href="javascript:window.PRIVATE_FIXTURE = true"') : swipeHtml(testDate) });
+        if (route.request().resourceType() === "document") {
+          assert.equal(url.searchParams.get('pageSize'), '90');
+          const html = swipeHtml(testDate, { mode, pageSizeControl: mode === 'wide', emptyCount: false });
+          return route.fulfill({ contentType: "text/html; charset=utf-8", body: mode === "script-url" ? html.replaceAll('href="javascript:;"', 'href="javascript:window.PRIVATE_FIXTURE = true"') : html });
+        }
         await new Promise(resolve => setTimeout(resolve, 300));
         if (mode === "timeout") return route.fulfill({ status: 503, body: "Simulated page failure" });
-        return route.fulfill({ json: swipeData(number, mode) });
+        if (mode === 'wide') assert.equal(url.searchParams.get('pageSize'), '90');
+        return route.fulfill({ json: swipeData(number, mode, Number(url.searchParams.get('pageSize') || 10)) });
       }
       return route.fulfill({ contentType: "text/html; charset=utf-8", body: '<a href="/a/edu/acm/swipe/attendList">学生考勤统计查询</a>' });
     });
@@ -197,6 +202,20 @@ const root = path.resolve(__dirname, "..");
     assert.match(changed.message, /23 条变为 24 条/);
     assert.deepEqual(changed.todaySwipes, []);
     assert.deepEqual(visitedPages, [1, 2]);
+
+    mode = 'empty';
+    const empty = await refreshFixture();
+    assert.equal(empty.status, 'ok'); assert.equal(empty.diagnostic, null);
+    assert.deepEqual(empty.todaySwipes, []); assert.deepEqual(empty.lastCompleteToday.swipes, []);
+    assert.deepEqual(visitedPages, [1]);
+    await page.waitForFunction(() => document.querySelector('#todayDuration').textContent === '00:00:00');
+    await page.locator('#diagnosticCard').waitFor({ state: 'hidden' });
+    mode = 'wide';
+    const wide = await refreshFixture();
+    assert.equal(wide.status, 'ok'); assert.equal(wide.todaySwipes.length, 6);
+    assert.deepEqual(visitedPages, [1, 1, 2]);
+    assert.equal(await school.locator('.layui-laypage-limits select').inputValue(), '90');
+    await page.waitForFunction(() => document.querySelector('#todayDuration').textContent === '03:00:00');
 
     mode = "auth-on-swipes";
     const expired = await refreshFixture();

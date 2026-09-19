@@ -16,13 +16,18 @@ execFileSync(process.execPath, [path.join(root, 'scripts/prepare-android.js')]);
     const operations = [], schoolRequests = [], writes = [], violations = [];
     await school.route('**/*', async route => {
       const url = new URL(route.request().url());
-      schoolRequests.push({ path: url.pathname, page: Number(url.searchParams.get('pageNo') || 1) });
+      schoolRequests.push({ path: url.pathname, page: Number(url.searchParams.get('pageNo') || 1), size: Number(url.searchParams.get('pageSize') || 10) });
       if (url.hostname === 'sts.slai.edu.cn') return route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<h1>虚构学校登录</h1>' });
       if (mode === 'auth') return route.fulfill({ status: 302, headers: { location: 'https://sts.slai.edu.cn/signin' }, body: '' });
       if (url.pathname.endsWith('/attendList')) return route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<h1>月度考勤统计汇总</h1><input value="2030-04"><p>学号: 000000000</p><table><tr><td>2030-04-08</td><td>周一</td><td>工作日</td><td>02:00:00</td></tr></table>' });
       if (url.pathname.endsWith('/list')) {
-        if (route.request().resourceType() === 'document') return route.fulfill({ contentType: 'text/html; charset=utf-8', body: mode === 'script-url' ? swipeHtml().replaceAll('href="javascript:;"', 'href="javascript:window.PRIVATE_FIXTURE=true"') : swipeHtml() });
-        return route.fulfill({ json: swipeData(Number(url.searchParams.get('pageNo') || 1), mode) });
+        const fixtureMode = mode.startsWith('empty') ? 'empty' : mode === 'resize-error' ? 'wide' : mode;
+        const html = swipeHtml(undefined, { mode: fixtureMode, pageSizeControl: fixtureMode === 'wide', emptyCount: mode !== 'empty-no-count' });
+        if (route.request().resourceType() === 'document') {
+          assert.equal(url.searchParams.get('pageSize'), '90');
+          return route.fulfill({ contentType: 'text/html; charset=utf-8', body: mode === 'script-url' ? html.replaceAll('href="javascript:;"', 'href="javascript:window.PRIVATE_FIXTURE=true"') : html });
+        }
+        return route.fulfill({ json: swipeData(Number(url.searchParams.get('pageNo') || 1), fixtureMode, Number(url.searchParams.get('pageSize') || 10)) });
       }
       return route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<a href="/a/edu/acm/swipe/attendList">学生考勤统计查询</a>' });
     });
@@ -59,6 +64,7 @@ execFileSync(process.execPath, [path.join(root, 'scripts/prepare-android.js')]);
             if (mode.startsWith('ANDROID_')) throw { code: mode, details: { httpStatus: 403, message: 'PRIVATE_FIXTURE', sourceUrl: 'PRIVATE_FIXTURE' } };
             await school.goto(args.url); value = tab(); break;
           case 'school.read':
+            if (mode === 'resize-error' && args.method === 'setSwipePageSize') throw { code: 'SCRIPT_PERMISSION', details: { message: 'PRIVATE_FIXTURE', sourceUrl: 'PRIVATE_FIXTURE' } };
             await school.addScriptTag({ path: path.join(root, 'extension/page-reader.js') });
             value = await school.evaluate(method => __slaiAttendance[method](), args.method); break;
           case 'school.close': value = true; break;
@@ -114,6 +120,32 @@ execFileSync(process.execPath, [path.join(root, 'scripts/prepare-android.js')]);
     assert.equal(unsupported.status, 'partial'); assert.equal(unsupported.diagnostic.code, 'SWIPE_SCRIPT_URL');
     assert.equal(unsupported.diagnostic.rowsRead, 10); assert.equal(unsupported.diagnostic.expectedTotal, 23);
     assert.deepEqual(unsupported.lastCompleteToday, complete.lastCompleteToday);
+    mode = 'resize-error';
+    const resizeFailed = await refreshFixture();
+    assert.equal(resizeFailed.diagnostic.code, 'SCRIPT_PERMISSION');
+    assert.equal(resizeFailed.diagnostic.operation, 'set_page_size');
+    assert.equal(resizeFailed.diagnostic.readerMethod, 'setSwipePageSize');
+    assert.equal(resizeFailed.diagnostic.page, 1);
+    assert.deepEqual(resizeFailed.lastCompleteToday, complete.lastCompleteToday);
+    await ui.locator('#copyDiagnostic').click();
+    assert.match(await ui.evaluate(() => window.copied), /设置每页 90 条/);
+    assert(!JSON.stringify(resizeFailed).includes('PRIVATE_FIXTURE') && !(await ui.evaluate(() => window.copied)).includes('PRIVATE_FIXTURE'));
+    for (mode of ['empty', 'empty-no-count']) {
+      const start = schoolRequests.length;
+      const empty = await refreshFixture();
+      assert.equal(empty.status, 'ok'); assert.equal(empty.diagnostic, null);
+      assert.deepEqual(empty.todaySwipes, []); assert.deepEqual(empty.lastCompleteToday.swipes, []);
+      assert.equal(await ui.locator('#todayDuration').innerText(), '00:00:00');
+      assert.equal(schoolRequests.slice(start).filter(item => item.path.endsWith('/list')).length, 1, 'No next-page or resize request for an empty day');
+      await ui.locator('#diagnosticCard').waitFor({ state: 'hidden' });
+    }
+    mode = 'wide';
+    const wideStart = schoolRequests.length;
+    const wide = await refreshFixture();
+    assert.equal(wide.status, 'ok'); assert.equal(wide.todaySwipes.length, 6);
+    assert.equal(await ui.locator('#todayDuration').innerText(), '03:00:00');
+    assert.deepEqual(schoolRequests.slice(wideStart).filter(item => item.path.endsWith('/list')).map(({page, size}) => [page, size]), [[1, 90], [1, 90], [2, 90]]);
+    assert.equal(await school.locator('.layui-laypage-limits select').inputValue(), '90');
     mode = 'auth';
     const expired = await refreshFixture();
     assert.equal(expired.status, 'auth'); assert.equal(expired.nextRefreshAt, null);

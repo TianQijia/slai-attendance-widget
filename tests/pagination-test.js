@@ -11,7 +11,7 @@ const { chromium } = require("playwright");
     const url = "https://stu.slai.edu.cn/a/edu/acm/swipe/list";
     await page.goto(url);
     async function control(html) {
-      await page.setContent(`<div class="pagination"><span class="active">1</span>${html}</div><div>共0条</div>`);
+      await page.setContent(`<div class="pagination"><span class="active">1</span>${html}</div><div>共23条</div>`);
       await page.addScriptTag({ path: path.join(__dirname, "../extension/page-reader.js") });
       await page.evaluate(() => {
         window.targetClicks = 0; window.delegatedClicks = 0;

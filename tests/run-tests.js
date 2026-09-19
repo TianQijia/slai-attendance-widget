@@ -199,12 +199,17 @@ async function main() {
   try {
     const context = await browser.newContext({ timezoneId: "Asia/Shanghai", viewport: { width: 410, height: 640 } });
     const unexpected = [];
+    let swipeMode = 'normal';
+    const swipeRequests = [];
     await context.route("**/*", async (route) => {
       const url = new URL(route.request().url());
       if (url.origin === "https://stu.slai.edu.cn" && url.pathname === "/a/edu/acm/swipe/list") {
         // Keep the old table visible briefly after the page indicator advances.
         await new Promise(resolve => setTimeout(resolve, 300));
-        await route.fulfill({ json: swipeData(Number(url.searchParams.get("pageNo"))) });
+        const number = Number(url.searchParams.get('pageNo'));
+        const size = Number(url.searchParams.get('pageSize') || 10);
+        swipeRequests.push({ number, size });
+        await route.fulfill({ json: swipeData(number, swipeMode, size) });
       } else if (route.request().url().startsWith("https://stu.slai.edu.cn/")) {
         await route.fulfill({ contentType: "text/html; charset=utf-8", body: route.request().url().includes("/sys/user/main") ? "<p>演示首页</p>" : '<iframe src="/a;JSESSIONID=test-session/sys/user/main"></iframe><a onclick="addTabs({url: \'/edu/acm/swipe/attendList\'})">学生考勤统计查询</a>' });
       } else if (route.request().url().startsWith("file:")) await route.continue();
@@ -282,6 +287,53 @@ async function main() {
     assert.equal(lastPage.pagination.current, 3, "Read Layui's current page when hidden fields are blank");
     assert.equal(lastPage.pagination.hasNext, false, "Layui's disabled next button must stop collection");
     assert.equal(await page.evaluate(() => __slaiAttendance.advanceSwipePage()), false);
+    for (const emptyCount of [true, false]) {
+      await page.setContent(swipeHtml(day, { mode: 'empty', emptyCount, pageSizeControl: true }));
+      const empty = await page.evaluate(() => __slaiAttendance.extractSwipePage());
+      assert.equal(empty.ready, true);
+      assert.equal(empty.pagination.total, 0);
+      assert.equal(empty.pagination.hasNext, false, 'An empty result must ignore the inert next control');
+      if (emptyCount) {
+        await page.evaluate(() => document.querySelector('.layui-none').remove());
+        assert.equal((await page.evaluate(() => __slaiAttendance.extractSwipePage())).ready, true, 'An explicit zero total is sufficient without the empty label');
+      }
+      assert.equal(await page.evaluate(() => __slaiAttendance.setSwipePageSize()), false, 'Empty results need no size-change request');
+      assert.equal(await page.evaluate(() => __slaiAttendance.advanceSwipePage()), false);
+      assert.equal((await vm.runInContext("collectSwipePages(1, '2030-04-08', { pages: 1 })", paginationContext)).length, 0);
+      await page.evaluate(() => document.querySelector('.layui-table-init').style.display = 'block');
+      assert.equal((await page.evaluate(() => __slaiAttendance.extractSwipePage())).ready, false, 'A stale empty marker under loading is not complete');
+    }
+    await page.setContent(swipeHtml(day, { mode: 'empty', emptyCount: false }));
+    await page.evaluate(() => document.querySelector('.layui-table-page').remove());
+    assert.equal((await page.evaluate(() => __slaiAttendance.extractSwipePage())).ready, true, 'Layui can omit the pager entirely for no data');
+    await page.evaluate(() => document.querySelector('.layui-none').style.display = 'none');
+    assert.equal((await page.evaluate(() => __slaiAttendance.extractSwipePage())).ready, false);
+    await page.setContent('<div class="layui-table-main"><table></table></div><p>暂无数据</p>');
+    assert.equal((await page.evaluate(() => __slaiAttendance.extractSwipePage())).ready, false, 'Unrelated empty text cannot certify the table');
+    await page.setContent('<div class="layui-table-main"><table></table><div class="layui-none">暂无数据</div></div><div>共5条</div>');
+    await assert.rejects(vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext), error => {
+      assert.equal(error.code, 'SWIPE_INCOMPLETE');
+      assert.equal(error.details.rowsRead, 0); assert.equal(error.details.expectedTotal, 5);
+      return true;
+    });
+    swipeMode = 'wide'; swipeRequests.length = 0;
+    await page.setContent(swipeHtml(day, { mode: 'wide', pageSizeControl: true }));
+    const wideBudget = { pages: 0 };
+    paginationContext.wideBudget = wideBudget;
+    const wideRecords = await vm.runInContext("collectSwipePages(1, '2030-04-08', wideBudget)", paginationContext);
+    assert.equal(wideRecords.length, 6, 'All campus visits survive resizing and the 90-row boundary');
+    assert.equal(wideRecords[0].timestamp, day + ' 06:00:00');
+    assert.deepEqual(swipeRequests, [{ number: 1, size: 90 }, { number: 2, size: 90 }]);
+    assert.equal(wideBudget.pages, 3, 'The initial size-change request counts toward the shared request budget');
+    assert.equal(await page.locator('.layui-laypage-limits select').inputValue(), '90');
+    swipeRequests.length = 0;
+    await page.setContent(swipeHtml(day, { mode: 'wide', pageSizeControl: true }));
+    await assert.rejects(vm.runInContext("collectSwipePages(1, '2030-04-08', { pages: 49 })", paginationContext), error => error.code === 'SWIPE_LIMIT');
+    assert.deepEqual(swipeRequests, [], 'Do not issue request 51 just to resize the last allowed page');
+    swipeMode = 'normal'; swipeRequests.length = 0;
+    await page.setContent(swipeHtml(day, { pageSizeControl: true }));
+    assert.equal((await vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext)).length, 6);
+    assert.deepEqual(swipeRequests, [{ number: 1, size: 90 }], 'Fewer than 90 rows finish on the resized first page');
     await page.close();
 
     let readerCalls = 0;
@@ -297,6 +349,14 @@ async function main() {
     let virtualNow = 0;
     paginationContext.Date = class extends Date { static now() { return virtualNow; } };
     paginationContext.delay = async ms => { virtualNow += ms; };
+    paginationContext.runReader = async () => ({ ready: false, pagination: { current: 1 } });
+    await assert.rejects(vm.runInContext("collectSwipePages(1, '2030-04-09', { pages: 3 })", paginationContext), error => {
+      const diagnostic = diagnoseError(error);
+      assert.equal(diagnostic.page, 1, 'The second civil date still starts at page 1');
+      assert.equal(diagnostic.currentPage, 1);
+      assert.match(diagnosticReport(sanitizeState({ status: 'partial', diagnostic }).diagnostic), /第 1 页明细加载超时/);
+      return true;
+    });
     paginationContext.runReader = async () => { throw new Error("Execution context was destroyed, PRIVATE_FIXTURE"); };
     await assert.rejects(vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext), error => {
       const diagnostic = diagnoseError(error);

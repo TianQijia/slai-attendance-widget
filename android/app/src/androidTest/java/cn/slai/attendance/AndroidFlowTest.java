@@ -27,6 +27,7 @@ public final class AndroidFlowTest {
     final List<Integer> pages = Collections.synchronizedList(new ArrayList<>());
     final AtomicInteger requests = new AtomicInteger();
     final AtomicBoolean desktopHeaders = new AtomicBoolean(true);
+    final AtomicBoolean widePageSize = new AtomicBoolean(true);
     volatile String mode = "normal";
 
     void main(Runnable action) { InstrumentationRegistry.getInstrumentation().runOnMainSync(action); }
@@ -78,10 +79,11 @@ public final class AndroidFlowTest {
                 if (route.endsWith("/list")) {
                     if (mode.equals("http")) return new WebResourceResponse("text/html", "UTF-8", 403, "Forbidden", Collections.emptyMap(), new ByteArrayInputStream(new byte[0]));
                     String page = request.getUrl().getQueryParameter("pageNo");
+                    if ((page == null || mode.equals("wide")) && !"90".equals(request.getUrl().getQueryParameter("pageSize"))) widePageSize.set(false);
                     pages.add(page == null ? 1 : Integer.parseInt(page));
                     try {
-                        if (page == null) return new WebResourceResponse("text/html", "UTF-8", new ByteArrayInputStream(asset("swipe.html")));
-                        return new WebResourceResponse("application/json", "UTF-8", new ByteArrayInputStream(asset("page-" + page + ".json")));
+                        if (page == null) return new WebResourceResponse("text/html", "UTF-8", new ByteArrayInputStream(asset(mode.equals("empty") ? "swipe-empty.html" : mode.equals("wide") ? "swipe-wide.html" : "swipe.html")));
+                        return new WebResourceResponse("application/json", "UTF-8", new ByteArrayInputStream(asset((mode.equals("wide") ? "wide-" : "") + "page-" + page + ".json")));
                     } catch (IOException ignored) { return html("<h1>Missing synthetic fixture</h1>"); }
                 }
                 return html("<a href='/a/edu/acm/swipe/attendList'>学生考勤统计查询</a>");
@@ -168,6 +170,21 @@ public final class AndroidFlowTest {
             assertEquals(403, failed.getJSONObject("diagnostic").getInt("httpStatus"));
             assertEquals(good.getString("updatedAt"), failed.getString("updatedAt"));
             assertEquals("03:00:00", eval(activity.dashboard, "document.querySelector('#todayDuration').textContent"));
+            mode = "empty"; pages.clear(); refresh();
+            JSONObject empty = cached();
+            assertEquals("ok", empty.getString("status"));
+            assertTrue(empty.isNull("diagnostic"));
+            assertEquals(0, empty.getJSONArray("todaySwipes").length());
+            assertEquals(0, empty.getJSONObject("lastCompleteToday").getJSONArray("swipes").length());
+            assertEquals("00:00:00", eval(activity.dashboard, "document.querySelector('#todayDuration').textContent"));
+            assertEquals(Arrays.asList(1), new ArrayList<>(pages));
+            mode = "wide"; pages.clear(); refresh();
+            assertEquals("ok", cached().getString("status"));
+            assertEquals(6, cached().getJSONArray("todaySwipes").length());
+            assertEquals(Arrays.asList(1, 1, 2), new ArrayList<>(pages));
+            assertEquals("90", eval(activity.school.web, "document.querySelector('.layui-laypage-limits select').value"));
+            assertEquals("03:00:00", eval(activity.dashboard, "document.querySelector('#todayDuration').textContent"));
+            assertTrue(widePageSize.get());
             mode = "normal"; clearCookies(); refresh();
             assertEquals("auth", cached().getString("status"));
             assertEquals("AUTH_EXPIRED", cached().getJSONObject("diagnostic").getString("code"));

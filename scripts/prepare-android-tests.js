@@ -4,4 +4,7 @@ const { swipeHtml, swipeData } = require('../tests/swipe-fixture');
 const output = path.resolve(__dirname, '../android/app/build/generated/slaiTestAssets');
 fs.mkdirSync(output, { recursive: true });
 fs.writeFileSync(path.join(output, 'swipe.html'), swipeHtml());
+fs.writeFileSync(path.join(output, 'swipe-empty.html'), swipeHtml(undefined, { mode: 'empty', emptyCount: false }));
+fs.writeFileSync(path.join(output, 'swipe-wide.html'), swipeHtml(undefined, { mode: 'wide', pageSizeControl: true }));
+for (const number of [1, 2]) fs.writeFileSync(path.join(output, `wide-page-${number}.json`), JSON.stringify(swipeData(number, 'wide', 90)));
 for (const number of [1, 2, 3]) fs.writeFileSync(path.join(output, `page-${number}.json`), JSON.stringify(swipeData(number)));
