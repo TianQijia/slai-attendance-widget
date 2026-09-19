@@ -59,7 +59,7 @@ jobs:
           script: |
             npm run test:android
             mkdir -p test-results
-            adb pull /sdcard/Android/data/cn.slai.attendance/files/android-verified.png test-results/android-device.png
+            adb pull /data/local/tmp/slai-android-verified.png test-results/android-device.png
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:

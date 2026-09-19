@@ -177,6 +177,13 @@ public final class AndroidFlowTest {
             Bitmap screenshot = InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();
             File output = new File(activity.getExternalFilesDir(null), "android-verified.png");
             try (FileOutputStream stream = new FileOutputStream(output)) { screenshot.compress(Bitmap.CompressFormat.PNG, 100, stream); }
+            // Gradle uninstalls the app after testing, so retain only this synthetic
+            // screenshot in the emulator shell's temporary directory first.
+            try (android.os.ParcelFileDescriptor command = InstrumentationRegistry.getInstrumentation().getUiAutomation()
+                .executeShellCommand("cp /sdcard/Android/data/cn.slai.attendance/files/android-verified.png /data/local/tmp/slai-android-verified.png && echo copied");
+                BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(command.getFileDescriptor()), StandardCharsets.UTF_8))) {
+                assertEquals("copied", reader.readLine());
+            }
             eval(activity.dashboard, "document.querySelector('#logout').click();document.querySelector('#confirmLogout').click();true");
             until("document.querySelector('#todayDuration').textContent === '--:--:--'");
             assertFalse(activity.stateFile.getBaseFile().exists());
