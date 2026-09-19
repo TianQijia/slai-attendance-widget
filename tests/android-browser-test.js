@@ -10,6 +10,20 @@ execFileSync(process.execPath, [path.join(root, 'scripts/prepare-android.js')]);
 (async () => {
   const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined });
   try {
+    const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    await phone.addInitScript({ path: path.join(root, 'android/app/src/main/web/android-school-viewport.js') });
+    await phone.route('**/*', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+      <style>body{margin:0;width:1280px;height:900px}button{position:absolute;left:1120px;top:100px;width:150px;height:80px}</style>
+      <button onclick="this.textContent='Selected'">Date filter</button>
+      <script>setTimeout(()=>document.querySelector('meta[name=viewport]').content='width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no',30)</script>` }));
+    const portal = await phone.newPage();
+    await portal.goto('https://stu.slai.edu.cn/');
+    await portal.waitForFunction(() => visualViewport.width >= 1278 && document.querySelector('meta[name=viewport]').content.includes('user-scalable=yes'));
+    await portal.getByRole('button', { name: 'Date filter' }).tap();
+    assert.equal(await portal.getByRole('button').textContent(), 'Selected', 'The right-hand desktop control can be tapped on a phone');
+    await portal.goto('https://sts.slai.edu.cn/signin');
+    assert.match(await portal.locator('meta[name=viewport]').getAttribute('content'), /user-scalable=no/, 'The portal layout override must not alter the login provider');
+    await phone.close();
     const context = await browser.newContext();
     const school = await context.newPage();
     let mode = 'normal', state = {}, view = 'calendar', collecting = false;
@@ -24,7 +38,8 @@ execFileSync(process.execPath, [path.join(root, 'scripts/prepare-android.js')]);
       if (url.pathname.endsWith('/list')) {
         const date = url.searchParams.get('swipeDate');
         const fixtureMode = mode === 'midnight' ? date === attendanceFixtureDay ? 'normal' : 'empty' : mode.startsWith('empty') ? 'empty' : mode === 'resize-error' ? 'wide' : mode;
-        const html = swipeHtml(date || undefined, { mode: fixtureMode, pageSizeControl: fixtureMode === 'wide' || mode === 'midnight', emptyCount: !['empty-no-count', 'midnight'].includes(mode) });
+        const blank = ['empty-blank', 'midnight'].includes(mode);
+        const html = swipeHtml(date || undefined, { mode: fixtureMode, pageSizeControl: fixtureMode === 'wide' || mode === 'midnight', emptyCount: !['empty-no-count', 'empty-blank', 'midnight'].includes(mode), emptyLabel: blank ? '' : '暂无数据', emptyPager: !blank });
         if (route.request().resourceType() === 'document') {
           assert.equal(url.searchParams.get('pageSize'), '90');
           return route.fulfill({ contentType: 'text/html; charset=utf-8', body: mode === 'script-url' ? html.replaceAll('href="javascript:;"', 'href="javascript:window.PRIVATE_FIXTURE=true"') : html });
@@ -132,7 +147,7 @@ execFileSync(process.execPath, [path.join(root, 'scripts/prepare-android.js')]);
     await ui.locator('#copyDiagnostic').click();
     assert.match(await ui.evaluate(() => window.copied), /设置每页 90 条/);
     assert(!JSON.stringify(resizeFailed).includes('PRIVATE_FIXTURE') && !(await ui.evaluate(() => window.copied)).includes('PRIVATE_FIXTURE'));
-    for (mode of ['empty', 'empty-no-count']) {
+    for (mode of ['empty', 'empty-no-count', 'empty-blank']) {
       const start = schoolRequests.length;
       const empty = await refreshFixture();
       assert.equal(empty.status, 'ok'); assert.equal(empty.diagnostic, null);

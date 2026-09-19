@@ -67,6 +67,10 @@ function testTimeAndPrivacy() {
   assert.match(report, /错误代码：SWIPE_INCOMPLETE/);
   assert(!/PRIVATE_FIXTURE|example.invalid|000000000|sourceUrl/.test(report + JSON.stringify(storedError)));
   assert.equal(sanitizeState({ ...storedError, status: "ok" }).diagnostic, null, "Success removes old diagnostics");
+  const invalidFacts = sanitizeState({ status: 'partial', diagnostic: { code: 'SWIPE_TIMEOUT',
+    queryDate: '2030-04-09 PRIVATE_FIXTURE', filterStartDate: '2030-02-30', filterEndDate: 'PRIVATE_FIXTURE', tableState: 'PRIVATE_FIXTURE', pageRowCount: '000000000'
+  } }).diagnostic;
+  for (const key of ['queryDate', 'filterStartDate', 'filterEndDate', 'tableState', 'pageRowCount']) assert.equal(invalidFacts[key], undefined);
   const unknown = diagnoseError(new TypeError("PRIVATE_FIXTURE"), { stage: "find_attendance" });
   assert.match(diagnosticReport(unknown), /直接原因尚未识别/);
   assert.equal(unknown.stage, "find_attendance");
@@ -287,13 +291,13 @@ async function main() {
     assert.equal(lastPage.pagination.current, 3, "Read Layui's current page when hidden fields are blank");
     assert.equal(lastPage.pagination.hasNext, false, "Layui's disabled next button must stop collection");
     assert.equal(await page.evaluate(() => __slaiAttendance.advanceSwipePage()), false);
-    for (const emptyCount of [true, false]) {
-      await page.setContent(swipeHtml(day, { mode: 'empty', emptyCount, pageSizeControl: true }));
+    for (const emptyOptions of [{ emptyCount: true }, { emptyCount: false }, { emptyCount: false, emptyLabel: '', emptyPager: false }]) {
+      await page.setContent(swipeHtml(day, { mode: 'empty', ...emptyOptions, pageSizeControl: true }));
       const empty = await page.evaluate(() => __slaiAttendance.extractSwipePage());
       assert.equal(empty.ready, true);
       assert.equal(empty.pagination.total, 0);
       assert.equal(empty.pagination.hasNext, false, 'An empty result must ignore the inert next control');
-      if (emptyCount) {
+      if (emptyOptions.emptyCount) {
         await page.evaluate(() => document.querySelector('.layui-none').remove());
         assert.equal((await page.evaluate(() => __slaiAttendance.extractSwipePage())).ready, true, 'An explicit zero total is sufficient without the empty label');
       }
@@ -303,13 +307,21 @@ async function main() {
       await page.evaluate(() => document.querySelector('.layui-table-init').style.display = 'block');
       assert.equal((await page.evaluate(() => __slaiAttendance.extractSwipePage())).ready, false, 'A stale empty marker under loading is not complete');
     }
-    await page.setContent(swipeHtml(day, { mode: 'empty', emptyCount: false }));
+    await page.setContent(swipeHtml(day, { mode: 'empty', emptyCount: false, emptyLabel: '' }));
     await page.evaluate(() => document.querySelector('.layui-table-page').remove());
     assert.equal((await page.evaluate(() => __slaiAttendance.extractSwipePage())).ready, true, 'Layui can omit the pager entirely for no data');
     await page.evaluate(() => document.querySelector('.layui-none').style.display = 'none');
     assert.equal((await page.evaluate(() => __slaiAttendance.extractSwipePage())).ready, false);
     await page.setContent('<div class="layui-table-main"><table></table></div><p>暂无数据</p>');
     assert.equal((await page.evaluate(() => __slaiAttendance.extractSwipePage())).ready, false, 'Unrelated empty text cannot certify the table');
+    for (const html of [
+      '<table></table><div class="layui-none"></div>',
+      '<div class="layui-table-view"><div class="layui-table-main"><table></table></div><div class="layui-none"></div></div>',
+      '<div class="layui-table-view"><div class="layui-table-main"><table></table><div class="layui-none">请求异常</div></div></div>'
+    ]) {
+      await page.setContent(html);
+      assert.equal((await page.evaluate(() => __slaiAttendance.extractSwipePage())).ready, false, 'An unrelated or error marker must not certify no records');
+    }
     await page.setContent('<div class="layui-table-main"><table></table><div class="layui-none">暂无数据</div></div><div>共5条</div>');
     await assert.rejects(vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext), error => {
       assert.equal(error.code, 'SWIPE_INCOMPLETE');
@@ -349,12 +361,22 @@ async function main() {
     let virtualNow = 0;
     paginationContext.Date = class extends Date { static now() { return virtualNow; } };
     paginationContext.delay = async ms => { virtualNow += ms; };
-    paginationContext.runReader = async () => ({ ready: false, pagination: { current: 1 } });
+    let timeoutDiagnostic;
+    paginationContext.runReader = async () => ({ ready: false, pagination: { current: 1, rowCount: 0 }, observation: {
+      tableState: 'unrecognized', filterStartDate: '2030-04-09', filterEndDate: '2030-04-09', rawHtml: 'PRIVATE_FIXTURE'
+    } });
     await assert.rejects(vm.runInContext("collectSwipePages(1, '2030-04-09', { pages: 3 })", paginationContext), error => {
       const diagnostic = diagnoseError(error);
       assert.equal(diagnostic.page, 1, 'The second civil date still starts at page 1');
       assert.equal(diagnostic.currentPage, 1);
-      assert.match(diagnosticReport(sanitizeState({ status: 'partial', diagnostic }).diagnostic), /第 1 页明细加载超时/);
+      timeoutDiagnostic = sanitizeState({ status: 'partial', diagnostic }).diagnostic;
+      assert.equal(timeoutDiagnostic.queryDate, '2030-04-09');
+      assert.equal(timeoutDiagnostic.filterStartDate, '2030-04-09');
+      assert.equal(timeoutDiagnostic.filterEndDate, '2030-04-09');
+      assert.equal(timeoutDiagnostic.tableState, 'unrecognized');
+      assert.equal(timeoutDiagnostic.pageRowCount, 0);
+      assert.match(diagnosticReport(timeoutDiagnostic), /第 1 页明细加载超时/);
+      assert(!JSON.stringify(timeoutDiagnostic).includes('PRIVATE_FIXTURE'));
       return true;
     });
     paginationContext.runReader = async () => { throw new Error("Execution context was destroyed, PRIVATE_FIXTURE"); };
@@ -439,6 +461,15 @@ async function main() {
     assert.equal(await manualReport.inputValue(), copiedReport);
     assert.equal(await manualReport.evaluate(el => el.selectionEnd - el.selectionStart), copiedReport.length);
     await ui.getByRole("button", { name: "关闭手动复制" }).click();
+    await ui.evaluate(() => { window.failCopy = false; });
+    await ui.evaluate(diagnostic => window.deliverState({ type: 'attendance-state', state: { ...window.fixtureState, status: 'partial', diagnostic } }), timeoutDiagnostic);
+    await ui.locator('#copyDiagnostic').click();
+    const queryReport = await ui.evaluate(() => window.copiedReport);
+    assert.match(queryReport, /正在查询：2030-04-09/);
+    assert.match(queryReport, /页面开始日期：2030-04-09/);
+    assert.match(queryReport, /页面结束日期：2030-04-09/);
+    assert.match(queryReport, /存在表格，但未识别到明细行或有效空表标记/);
+    assert.match(queryReport, /当前页已识别：0 条/);
     await ui.screenshot({ path: path.join(root, "test-results", "summary-fallback.png"), fullPage: true });
     await ui.evaluate(() => { window.failRequest = true; });
     await ui.locator("#refresh").click();

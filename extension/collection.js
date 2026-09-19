@@ -112,7 +112,7 @@ async function collectSwipePages(tabId, queryDate, budget = { pages: 0 }, window
     const deadline = Date.now() + 15000;
     let page = null;
     let lastReaderError = null;
-    const details = { stage: "read_swipes", page: index + 1, rowsRead, expectedTotal, timeoutMs: 15000 };
+    const details = { stage: "read_swipes", queryDate, page: index + 1, rowsRead, expectedTotal, timeoutMs: 15000 };
     do {
       let tab;
       try {
@@ -125,7 +125,13 @@ async function collectSwipePages(tabId, queryDate, budget = { pages: 0 }, window
         try {
           const candidate = await runReader(tabId, 'extractSwipePage');
           lastReaderError = null;
-          if (candidate?.pagination) details.currentPage = candidate.pagination.current;
+          if (candidate?.pagination) {
+            details.currentPage = candidate.pagination.current;
+            details.pageRowCount = candidate.pagination.rowCount;
+          }
+          if (candidate?.observation) {
+            for (const field of ['tableState', 'filterStartDate', 'filterEndDate']) details[field] = candidate.observation[field];
+          }
           if (candidate?.ready && candidate.pagination && (!previous ||
             (candidate.pagination.current === previous.current + 1 && candidate.pagination.signature !== previous.signature))) {
             if (!previous && !pageSizeConfigured && candidate.pagination.canSetPageSize && budget.pages < 49) {
@@ -175,10 +181,10 @@ async function collectSwipePages(tabId, queryDate, budget = { pages: 0 }, window
       if (advanced?.errorCode === 'SWIPE_SCRIPT_URL') throw readerError('SWIPE_SCRIPT_URL', '分页控件使用未支持的脚本链接');
       if (advanced !== true) throw readerError('SWIPE_NEXT', '无法翻到下一页');
     } catch (error) {
-      throw withErrorDetails(error, { stage: "advance_swipes", operation: "advance_page", page: meta.current + 1, currentPage: meta.current, rowsRead, expectedTotal });
+      throw withErrorDetails(error, { stage: "advance_swipes", operation: "advance_page", queryDate, page: meta.current + 1, currentPage: meta.current, rowsRead, expectedTotal });
     }
   }
-  throw readerError('SWIPE_LIMIT', '刷卡页数超过安全上限', { stage: "read_swipes", page: 50, rowsRead, expectedTotal });
+  throw readerError('SWIPE_LIMIT', '刷卡页数超过安全上限', { stage: "read_swipes", queryDate, page: 50, rowsRead, expectedTotal });
 }
 
 async function scrapeAttendance({ sourceTabId = null } = {}) {
@@ -187,6 +193,7 @@ async function scrapeAttendance({ sourceTabId = null } = {}) {
   let attendanceData = null;
   let summaryUpdatedAt = null;
   let stage = "open_portal";
+  let swipeQueryDate;
 
   try {
     if (sourceTabId !== null) {
@@ -250,6 +257,7 @@ async function scrapeAttendance({ sourceTabId = null } = {}) {
       if (attendanceDateKey() !== queryDate) throw readerError("ATTENDANCE_DAY_CHANGED", "读取期间已跨过05:00", { stage: "read_swipes" });
       const civilDate = attendanceQueryDates().find(value => !queried.has(value));
       if (!civilDate) break;
+      swipeQueryDate = civilDate;
       if (budget.pages >= 50) throw readerError("SWIPE_LIMIT", "刷卡页数超过安全上限", { stage: "read_swipes", page: 50 });
       if (queried.size) await delay(1500);
       stage = "open_swipes";
@@ -284,7 +292,7 @@ async function scrapeAttendance({ sourceTabId = null } = {}) {
       updatedAt: completedAt
     });
   } catch (error) {
-    const diagnostic = diagnoseError(error, { stage });
+    const diagnostic = diagnoseError(error, { stage, queryDate: swipeQueryDate });
     const cached = await getState();
     const summaryOnly = attendanceData && diagnostic.code !== 'AUTH_EXPIRED';
     await saveState({

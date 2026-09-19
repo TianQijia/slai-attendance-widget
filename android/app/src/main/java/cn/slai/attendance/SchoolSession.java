@@ -9,6 +9,7 @@ import android.os.Looper;
 import android.webkit.*;
 import androidx.webkit.UserAgentMetadata;
 import androidx.webkit.WebSettingsCompat;
+import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 import org.json.JSONObject;
 import java.util.Collections;
@@ -22,6 +23,7 @@ final class SchoolSession {
     final WebView web;
     final Handler handler = new Handler(Looper.getMainLooper());
     final String reader;
+    final String viewport;
     NativeResult pending;
     Runnable deadline;
     int generation;
@@ -31,10 +33,8 @@ final class SchoolSession {
     Runnable visibleLoaded = () -> {};
 
     SchoolSession(Context context) throws java.io.IOException {
-        try (java.io.InputStream input = context.getAssets().open("web/page-reader.js"); java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream()) {
-            byte[] chunk = new byte[8192]; int size; while ((size = input.read(chunk)) != -1) bytes.write(chunk, 0, size);
-            reader = bytes.toString("UTF-8");
-        }
+        reader = readAsset(context, "page-reader.js");
+        viewport = readAsset(context, "android-school-viewport.js");
         web = new WebView(context);
         WebSettings settings = web.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -46,9 +46,14 @@ final class SchoolSession {
         settings.setSaveFormData(false);
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
+        settings.setSupportZoom(true);
         settings.setBuiltInZoomControls(true);
         settings.setDisplayZoomControls(false);
         settings.setSupportMultipleWindows(false);
+        web.setInitialScale(0);
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            WebViewCompat.addDocumentStartJavaScript(web, viewport, Collections.singleton("https://stu.slai.edu.cn"));
+        }
         Matcher match = Pattern.compile("Chrome/(\\d+(?:\\.\\d+){3})").matcher(WebSettings.getDefaultUserAgent(context));
         String version = match.find() ? match.group(1) : "120.0.0.0";
         String major = version.split("\\.")[0];
@@ -67,6 +72,13 @@ final class SchoolSession {
             @Override public boolean onConsoleMessage(ConsoleMessage message) { return true; }
         });
         web.setWebViewClient(new Client());
+    }
+
+    static String readAsset(Context context, String name) throws java.io.IOException {
+        try (java.io.InputStream input = context.getAssets().open("web/" + name); java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream()) {
+            byte[] chunk = new byte[8192]; int size; while ((size = input.read(chunk)) != -1) bytes.write(chunk, 0, size);
+            return bytes.toString("UTF-8");
+        }
     }
 
     static boolean allowed(String raw) {
@@ -154,6 +166,8 @@ final class SchoolSession {
         }
         @Override public void onPageFinished(WebView view, String url) {
             if (pageFailed || !url.equals(startedUrl) || !url.equals(view.getUrl()) || !allowed(url)) return;
+            // Also covers WebViews without document-start injection support.
+            view.evaluateJavascript(viewport, null);
             complete = true; CookieManager.getInstance().flush();
             if (pending != null && navigating) succeed(state());
             else if (!collecting) visibleLoaded.run();

@@ -134,16 +134,29 @@
     const emptyText = /^(?:暂无|没有|无)(?:相关)?(?:数据|记录)[。.!！]?$/;
     const main = document.querySelector('.layui-table-main');
     const emptyMarker = Array.from((main || document).querySelectorAll('.layui-none, table td'))
-      .some(el => visible(el) && emptyText.test(clean(el.innerText)));
+      .some(el => visible(el) && (emptyText.test(clean(el.innerText)) ||
+        // The school's loaded empty table renders a blank .layui-none and no
+        // pager. Only accept that marker inside the rendered main table.
+        (el.matches('.layui-table-view .layui-table-main > .layui-none') &&
+          !clean(el.textContent) && el.children.length === 0)));
     const hasDataCells = swipeRows().some(row => Array.from(row.querySelectorAll('td'))
       .some(cell => clean(cell.innerText) && !emptyText.test(clean(cell.innerText))));
     // Empty Layui tables can omit the pager or leave an inert next button.
     // A bare/hidden/loading table or a positive total is not proof of no data.
     const empty = !hasDataCells && rowTimes.length === 0 && (total === 0 || (!Number.isFinite(total) && emptyMarker));
     const sizeControl = swipePageSizeControl();
+    const filterDate = name => {
+      const value = document.querySelector(`[name="${name}"]`)?.value;
+      return /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value : undefined;
+    };
     return {
       ready: !loading && (rowTimes.length > 0 || total > 0 || empty),
       records,
+      observation: {
+        tableState: loading ? 'loading' : empty ? 'empty' : rowTimes.length ? 'rows' :
+          main || document.querySelector('table') ? 'unrecognized' : 'missing',
+        filterStartDate: filterDate('startTime'), filterEndDate: filterDate('endTime')
+      },
       pagination: {
         current, total: Number.isFinite(total) ? total : empty ? 0 : null,
         rowCount: rowTimes.length, signature: JSON.stringify(rowTimes),

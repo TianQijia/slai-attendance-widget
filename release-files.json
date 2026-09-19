@@ -63,6 +63,7 @@
     "android/app/src/main/web/android.css",
     "android/app/src/main/web/android-native.js",
     "android/app/src/main/web/android-host.js",
+    "android/app/src/main/web/android-school-viewport.js",
     "android/app/src/main/java/cn/slai/attendance/MainActivity.java",
     "android/app/src/main/java/cn/slai/attendance/NativeResult.java",
     "android/app/src/main/java/cn/slai/attendance/SchoolSession.java",
@@ -133,6 +134,7 @@
     "android/app/src/main/web/android-widget.js",
     "android/app/src/main/web/android.css",
     "android/app/src/main/web/android-native.js",
-    "android/app/src/main/web/android-host.js"
+    "android/app/src/main/web/android-host.js",
+    "android/app/src/main/web/android-school-viewport.js"
   ]
 }

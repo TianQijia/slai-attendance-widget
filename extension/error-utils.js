@@ -59,7 +59,8 @@
   const systemCodes = { EACCES: "操作系统拒绝访问", EPERM: "操作系统不允许此操作", ENOSPC: "存储空间不足", EIO: "操作系统报告输入输出错误", EADDRINUSE: "地址已被占用", EADDRNOTAVAIL: "此地址当前不可用", EMFILE: "此进程已打开过多文件", ENFILE: "系统已打开过多文件", ENOENT: "所需文件或目录不存在", ECONNREFUSED: "连接被拒绝", ECONNRESET: "连接被重置", ETIMEDOUT: "连接超时", EHOSTUNREACH: "目标主机不可达", ENETUNREACH: "目标网络不可达" };
   systemCodes.EEXIST = "路径已被现有文件或目录占用";
   systemCodes.ENOTDIR = "路径中的一项不是目录";
-  const numericFields = { page: [1, 51], currentPage: [1, 10000], rowsRead: [0, 1000000], expectedTotal: [0, 1000000], actualTotal: [0, 1000000], timeoutMs: [0, 1200000], httpStatus: [100, 599], port: [1, 65535], retryAfterSeconds: [0, 60] };
+  const numericFields = { page: [1, 51], currentPage: [1, 10000], rowsRead: [0, 1000000], pageRowCount: [0, 1000000], expectedTotal: [0, 1000000], actualTotal: [0, 1000000], timeoutMs: [0, 1200000], httpStatus: [100, 599], port: [1, 65535], retryAfterSeconds: [0, 60] };
+  const tableStates = { loading: "表格仍显示加载标记", empty: "已确认空表", rows: "已识别明细行", unrecognized: "存在表格，但未识别到明细行或有效空表标记", missing: "尚未出现表格" };
 
   function sanitizeDiagnostic(input) {
     if (!input || typeof input !== "object") return null;
@@ -72,6 +73,12 @@
     if (errorNames.includes(input.errorName)) result.errorName = input.errorName;
     if (networkCodes.includes(input.networkCode)) result.networkCode = input.networkCode;
     if (Object.hasOwn(systemCodes, input.systemCode)) result.systemCode = input.systemCode;
+    if (Object.hasOwn(tableStates, input.tableState)) result.tableState = input.tableState;
+    for (const field of ['queryDate', 'filterStartDate', 'filterEndDate']) {
+      const value = input[field];
+      if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+          Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value) result[field] = value;
+    }
     if (typeof input.occurredAt === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(input.occurredAt) && Number.isFinite(Date.parse(input.occurredAt))) result.occurredAt = input.occurredAt;
     for (const [key, [min, max]] of Object.entries(numericFields)) {
       if (Number.isSafeInteger(input[key]) && input[key] >= min && input[key] <= max) result[key] = input[key];
@@ -119,9 +126,14 @@
     if (d.operation) lines.push(`失败操作：${operations[d.operation]}`);
     if (d.readerMethod) lines.push(`读取方法：${d.readerMethod}`);
     if (d.errorName) lines.push(`异常类型：${d.errorName}`);
+    if (d.queryDate) lines.push(`正在查询：${d.queryDate}`);
+    if (d.filterStartDate) lines.push(`页面开始日期：${d.filterStartDate}`);
+    if (d.filterEndDate) lines.push(`页面结束日期：${d.filterEndDate}`);
+    if (d.tableState) lines.push(`表格状态：${tableStates[d.tableState]}`);
     if (d.page !== undefined) lines.push(`目标页：第 ${d.page} 页`);
     if (d.currentPage !== undefined) lines.push(`页面当前显示：第 ${d.currentPage} 页`);
     if (d.rowsRead !== undefined) lines.push(`已读取：${d.rowsRead} 条`);
+    if (d.pageRowCount !== undefined) lines.push(`当前页已识别：${d.pageRowCount} 条`);
     if (d.expectedTotal !== undefined) lines.push(`预期总数：${d.expectedTotal} 条`);
     if (d.actualTotal !== undefined) lines.push(`页面总数：${d.actualTotal} 条`);
     if (d.timeoutMs !== undefined) lines.push(`等待上限：${d.timeoutMs / 1000} 秒`);

@@ -17,12 +17,13 @@ import java.nio.charset.StandardCharsets;
 public final class MainActivity extends Activity {
     static final String ORIGIN = "https://appassets.androidplatform.net";
     static final String HOME = ORIGIN + "/assets/web/index.html";
-    static final String SCHOOL_HINT = "在学校页面完成登录后，点击“返回考勤”会刷新一次。可双指缩放页面。";
+    static final String SCHOOL_HINT = "学校页面可双指缩放，也可用上方按钮调整大小。“返回考勤”会刷新一次。";
     WebView dashboard;
     SchoolSession school;
     FrameLayout root;
     LinearLayout schoolPanel;
     TextView schoolStatus;
+    Button returnButton, zoomOutButton, zoomInButton;
     AtomicFile stateFile;
     boolean schoolVisible;
 
@@ -45,12 +46,17 @@ public final class MainActivity extends Activity {
         setContentView(root);
         school = new SchoolSession(this);
         schoolPanel = new LinearLayout(this); schoolPanel.setOrientation(LinearLayout.VERTICAL);
-        Button back = new Button(this); back.setText("返回考勤"); back.setOnClickListener(view -> returnToAttendance());
+        LinearLayout toolbar = new LinearLayout(this);
+        returnButton = new Button(this); returnButton.setText("返回考勤"); returnButton.setOnClickListener(view -> returnToAttendance());
+        zoomOutButton = new Button(this); zoomOutButton.setText("缩小"); zoomOutButton.setOnClickListener(view -> { if (!school.rendererGone) school.web.zoomOut(); });
+        zoomInButton = new Button(this); zoomInButton.setText("放大"); zoomInButton.setOnClickListener(view -> { if (!school.rendererGone) school.web.zoomIn(); });
+        toolbar.addView(returnButton, new LinearLayout.LayoutParams(0, -2, 1));
+        toolbar.addView(zoomOutButton); toolbar.addView(zoomInButton);
         schoolStatus = new TextView(this); schoolStatus.setText(SCHOOL_HINT);
         schoolStatus.setPadding(16, 8, 16, 8); schoolStatus.setTextIsSelectable(true);
         school.visibleError = (code, details) -> schoolStatus.setText(navigationDiagnostic(code, details));
         school.visibleLoaded = () -> schoolStatus.setText(SCHOOL_HINT);
-        schoolPanel.addView(back); schoolPanel.addView(schoolStatus);
+        schoolPanel.addView(toolbar); schoolPanel.addView(schoolStatus);
         schoolPanel.addView(school.web, new LinearLayout.LayoutParams(-1, 0, 1));
         root.addView(schoolPanel, new FrameLayout.LayoutParams(-1, -1));
         dashboard = new WebView(this);
