@@ -9,7 +9,7 @@ const { atomicWrite } = require("../companion/server");
 const { sanitizeState } = globalThis.__slaiState;
 const { codedError, diagnoseError, diagnosticReport } = globalThis.__slaiErrors;
 const cli = path.join(__dirname, "../companion/cli.js");
-const bindings = { "10.44.0.8": {}, "10.44.0.9": {} };
+const bindings = { "127.0.0.1": {}, "10.44.0.8": {}, "10.44.0.9": {} };
 
 (async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "slai-cli-test-"));
@@ -68,6 +68,27 @@ const request = http.request;
 http.request = function(options, ...rest) {
   if (bindings[options.host]?.[options.port]) options = { ...options, host: "127.0.0.1", port: bindings[options.host][options.port], headers: { ...options.headers, Host: options.host + ":" + options.port } };
   return request.call(this, options, ...rest);
+};
+const fetch = globalThis.fetch;
+globalThis.fetch = function(input, options = {}) {
+  const url = new URL(input);
+  const port = bindings[url.hostname]?.[url.port];
+  if (!port) return fetch(input, options);
+  const headers = new Headers(options.headers);
+  headers.set("Host", url.host);
+  url.hostname = "127.0.0.1";
+  url.port = port;
+  // Node fetch owns the Host header. Use real HTTP for this test-only mapped
+  // transport so the production Host/auth checks still see the logical port.
+  return new Promise((resolve, reject) => {
+    const req = request(url, { method: options.method || "GET", headers: Object.fromEntries(headers), signal: options.signal }, res => {
+      const chunks = [];
+      res.on("data", bytes => chunks.push(bytes));
+      res.on("end", () => resolve(new Response(Buffer.concat(chunks), { status: res.statusCode, headers: res.headers })));
+    });
+    req.on("error", reject);
+    req.end(options.body);
+  });
 };
 `);
     await select([]);

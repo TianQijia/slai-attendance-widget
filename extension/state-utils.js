@@ -1,7 +1,7 @@
 (() => {
   const { sanitizeDiagnostic, describeDiagnostic } = globalThis.__slaiErrors;
   const messages = {
-    loading: "正在读取考勤…",
+    loading: "等待完整同步 · 每日05:00切日",
     ok: "考勤已更新",
     partial: "今日明细读取失败，今日估算已暂停；历史采用学校汇总",
     auth: "登录已过期，请在学校页面重新登录",
@@ -16,19 +16,20 @@
 
   function sanitizeState(input = {}) {
     const state = input && typeof input === "object" ? input : {};
-    const status = Object.hasOwn(messages, state.status) ? state.status : "loading";
+    const currentSchema = state.schemaVersion === 5;
+    const status = !currentSchema && state.status === "ok" ? "loading" : Object.hasOwn(messages, state.status) ? state.status : "loading";
     const diagnostic = ["partial", "error", "auth"].includes(status) ? sanitizeDiagnostic(state.diagnostic ||
       (state.errorCode ? { code: state.errorCode, stage: status === "partial" ? "read_swipes" : "unknown" } : null)) : null;
     const description = describeDiagnostic(diagnostic);
     const errorCode = diagnostic?.code || "";
     const reason = description?.reason || messages[status];
     const message = status === "partial" ? `${description?.reason || "今日明细的失败原因尚未记录"}；今日估算已暂停，历史采用学校汇总` : reason;
-    let snapshot = sanitizeSnapshot(state.lastCompleteToday);
-    if (!snapshot && state.schemaVersion !== 4 && status === "ok" && instant(state.updatedAt) && Array.isArray(state.todaySwipes)) {
-      snapshot = sanitizeSnapshot({ date: globalThis.__slaiTime.localDateKey(new Date(state.updatedAt)), swipes: state.todaySwipes, updatedAt: state.updatedAt });
+    let snapshot = currentSchema ? sanitizeSnapshot(state.lastCompleteToday) : null;
+    if (!snapshot && !state.lastCompleteToday && currentSchema && status === "ok" && instant(state.updatedAt) && Array.isArray(state.todaySwipes)) {
+      snapshot = sanitizeSnapshot({ date: globalThis.__slaiTime.attendanceDateKey(new Date(state.updatedAt)), swipes: state.todaySwipes, updatedAt: state.updatedAt });
     }
     return {
-      schemaVersion: 4,
+      schemaVersion: 5,
       status,
       message,
       errorCode,
@@ -42,17 +43,21 @@
         duration: typeof day.duration === "string" && /^(?:\d{1,3}:[0-5]\d:[0-5]\d|0)$/.test(day.duration) ? day.duration : "0",
         qualified: day.qualified === true
       })),
-      todaySwipes: (status !== "partial" && Array.isArray(state.todaySwipes) ? state.todaySwipes : []).filter((swipe) => swipe && ["进门", "出门"].includes(swipe.direction) && Number.isFinite(globalThis.__slaiTime.timestampMs(swipe.timestamp))).map(({ direction, timestamp }) => ({ direction, timestamp })),
+      todaySwipes: status === "ok" && snapshot ? snapshot.swipes : [],
       lastCompleteToday: snapshot,
-      updatedAt: instant(state.updatedAt),
-      summaryUpdatedAt: instant(state.summaryUpdatedAt),
+      updatedAt: currentSchema ? instant(state.updatedAt) : null,
+      summaryUpdatedAt: instant(state.summaryUpdatedAt) || (!currentSchema ? instant(state.updatedAt) : null),
       nextRefreshAt: instant(state.nextRefreshAt)
     };
   }
 
   function sanitizeSnapshot(snapshot) {
-    if (!snapshot || !date(snapshot.date) || !instant(snapshot.updatedAt) || !Array.isArray(snapshot.swipes) || snapshot.date > globalThis.__slaiTime.localDateKey(new Date(snapshot.updatedAt))) return null;
-    const swipes = snapshot.swipes.filter(swipe => swipe && ["进门", "出门"].includes(swipe.direction) && Number.isFinite(globalThis.__slaiTime.timestampMs(swipe.timestamp)) && swipe.timestamp.startsWith(snapshot.date + " ") && globalThis.__slaiTime.timestampMs(swipe.timestamp) <= Date.parse(snapshot.updatedAt));
+    if (!snapshot || !date(snapshot.date) || !instant(snapshot.updatedAt) || !Array.isArray(snapshot.swipes) || snapshot.date !== globalThis.__slaiTime.attendanceDateKey(new Date(snapshot.updatedAt))) return null;
+    const window = globalThis.__slaiTime.attendanceWindow(snapshot.date);
+    const swipes = snapshot.swipes.filter(swipe => {
+      const at = globalThis.__slaiTime.timestampMs(swipe?.timestamp);
+      return swipe && ["进门", "出门"].includes(swipe.direction) && Number.isFinite(at) && at >= window.start && at < window.end && at <= Date.parse(snapshot.updatedAt);
+    });
     if (swipes.length !== snapshot.swipes.length) return null;
     return { date: snapshot.date, swipes: swipes.map(({ direction, timestamp }) => ({ direction, timestamp })), updatedAt: snapshot.updatedAt };
   }

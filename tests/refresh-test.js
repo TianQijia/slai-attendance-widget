@@ -99,10 +99,10 @@ async function protocolTest() {
   } finally { if (client) client.socket.terminate(); if (service) await service.close(); await fs.rm(dir, { recursive: true, force: true }); }
 }
 function fixtureState(status = "ok", diagnostic = null) {
-  const date = globalThis.__slaiTime.localDateKey();
+  const date = globalThis.__slaiTime.attendanceDateKey();
   const updatedAt = new Date().toISOString();
-  return sanitizeState({ schemaVersion: 4, status, diagnostic, month: date.slice(0, 7), days: [], updatedAt, summaryUpdatedAt: updatedAt,
-    lastCompleteToday: { date, updatedAt, swipes: [{ timestamp: date + " 00:00:00", direction: "进门" }, { timestamp: date + " 00:00:00", direction: "出门" }] } });
+  return sanitizeState({ schemaVersion: 5, status, diagnostic, month: date.slice(0, 7), days: [], updatedAt, summaryUpdatedAt: updatedAt,
+    lastCompleteToday: { date, updatedAt, swipes: [{ timestamp: date + " 05:00:00", direction: "进门" }, { timestamp: date + " 05:00:00", direction: "出门" }] } });
 }
 async function integrationTest() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "slai-refresh-integration-"));

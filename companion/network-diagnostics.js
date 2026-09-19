@@ -125,7 +125,7 @@ async function collectDiagnostics({ dir, platform = process.platform, addresses 
   try { checks.push(...await inspect({ platform, host: addresses.includes(selected) ? selected : undefined })); }
   catch (error) { checks.push({ id: "firewall", code: "NET_FIREWALL_UNKNOWN", diagnostic: diagnostic(safeError("NET_INSPECT_FAILED", error), "network_inspect") }); }
   checks.push({ id: "peer", code: "NET_PEER_UNVERIFIED" });
-  return sanitizeReport({ schemaVersion: 1, platform, version: "1.2.0", createdAt: new Date(now()).toISOString(), checks });
+  return sanitizeReport({ schemaVersion: 1, platform, version: "1.3.0", createdAt: new Date(now()).toISOString(), checks });
 }
 const escape = value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 function reportHtml(input) {

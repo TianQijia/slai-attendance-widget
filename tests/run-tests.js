@@ -18,6 +18,7 @@ const day = "2030-04-08";
 const instant = (clock) => new Date(`${day}T${clock}+08:00`).getTime();
 const swipe = (clock, direction) => ({ timestamp: `${day} ${clock}`, direction });
 const fixtureState = {
+  schemaVersion: 5,
   status: "ok", month: "2030-04", requiredSeconds: 21600,
   days: [
     { date: "2030-04-07", weekday: "周日", type: "休息日", duration: "01:00:00" },
@@ -37,7 +38,7 @@ function testTimeAndPrivacy() {
   assert.equal(attendanceSeconds(exited, instant("12:00:00")).onCampus, false);
   const duplicate = { ...fixtureState, todaySwipes: [swipe("05:00:00", "出门"), swipe("06:00:00", "进门"), swipe("06:00:00", "进门"), swipe("08:00:00", "出门")] };
   assert.equal(attendanceSeconds(duplicate, instant("10:00:00")).seconds, 7200);
-  assert.equal(attendanceSeconds(fixtureState, new Date("2030-04-09T00:00:00+08:00").getTime()).seconds, 0);
+  assert.equal(attendanceSeconds(fixtureState, new Date("2030-04-09T00:00:00+08:00").getTime()).seconds, 10800, "Stale same-attendance-day snapshot stays frozen across midnight");
   const dirty = {
     ...fixtureState, studentNumber: "000000000", studentName: "DEMO_ONLY",
     sourceUrl: "https://example.invalid/private", message: "PRIVATE_FIXTURE", errorCode: "PRIVATE_FIXTURE",
@@ -258,7 +259,7 @@ async function main() {
     paginationContext.runReader = async (_id, method) => page.evaluate((name) => globalThis.__slaiAttendance[name](), method);
     const threeVisits = await vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext);
     assert.equal(threeVisits.length, 6);
-    assert.equal(attendanceSeconds({ status: "ok", updatedAt: "2030-04-08T04:00:00.000Z", days: [], todaySwipes: threeVisits }, instant('12:00:00')).seconds, 10800);
+    assert.equal(attendanceSeconds({ schemaVersion: 5, status: "ok", updatedAt: "2030-04-08T04:00:00.000Z", days: [], todaySwipes: threeVisits }, instant('12:00:00')).seconds, 10800);
     await page.evaluate(() => { renderSwipeFixture(1); document.querySelector('.pagination').remove(); });
     await assert.rejects(vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext), error => {
       assert.equal(error.code, "SWIPE_INCOMPLETE");
@@ -275,7 +276,7 @@ async function main() {
     assert.equal(layui.pagination.rowCount, 10, "Ignore the table's fixed-column copies");
     const layuiVisits = await vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext);
     assert.equal(layuiVisits.length, 6);
-    assert.equal(attendanceSeconds({ status: "ok", updatedAt: "2030-04-08T04:00:00.000Z", days: [], todaySwipes: layuiVisits }, instant('12:00:00')).seconds, 10800);
+    assert.equal(attendanceSeconds({ schemaVersion: 5, status: "ok", updatedAt: "2030-04-08T04:00:00.000Z", days: [], todaySwipes: layuiVisits }, instant('12:00:00')).seconds, 10800);
     const lastPage = await page.evaluate(() => __slaiAttendance.extractSwipePage());
     assert.equal(lastPage.pagination.current, 3, "Read Layui's current page when hidden fields are blank");
     assert.equal(lastPage.pagination.hasNext, false, "Layui's disabled next button must stop collection");
@@ -337,22 +338,18 @@ async function main() {
     assert.equal(await ui.locator("#todayDuration").innerText(), "03:00:00");
     await ui.clock.runFor(2000);
     assert.equal(await ui.locator("#todayDuration").innerText(), "03:00:00");
-    assert.match(await ui.locator("#statusText").innerText(), /当前离校/);
+    assert.match(await ui.locator("#statusText").innerText(), /已离校/);
     await ui.evaluate(() => {
       const badge = document.createElement("p");
       badge.textContent = "演示数据 · 非真实考勤";
-      badge.style.cssText = "color:#72e4ad;font-size:12px;text-align:center;margin:8px 0";
+      badge.style.cssText = "color:#d86b9f;font-size:12px;text-align:center;margin:8px 0";
       document.querySelector(".shell").prepend(badge);
     });
     fs.mkdirSync(path.join(root, "test-results"), { recursive: true });
-    const screenshot = await ui.screenshot({ path: path.join(root, "test-results", "demo.png"), fullPage: true });
-    if (process.env.UPDATE_DEMO === "1") {
-      fs.mkdirSync(path.join(root, "docs"), { recursive: true });
-      fs.writeFileSync(path.join(root, "docs", "demo.png"), screenshot);
-    }
+    await ui.screenshot({ path: path.join(root, "test-results", "demo.png"), fullPage: true });
     await ui.evaluate(() => window.deliverState({ type: "attendance-state", state: { status: "auth", message: "请登录学校系统", days: [], nextRefreshAt: null } }));
     assert.equal(await ui.locator("#authCard").isVisible(), true);
-    assert.match(await ui.locator("#nextRefresh").innerText(), /自动刷新已暂停/);
+    assert.match(await ui.locator("#nextRefresh").textContent(), /自动刷新已暂停/);
     await ui.evaluate((state) => window.deliverState({ type: "attendance-state", state }), sanitizeState({
       ...sanitizeState(fixtureState), status: "partial", diagnostic: {
         code: "SWIPE_TIMEOUT", stage: "read_swipes", page: 2, currentPage: 1, rowsRead: 10, expectedTotal: 23, timeoutMs: 15000,

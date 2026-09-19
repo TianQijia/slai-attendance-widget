@@ -96,7 +96,7 @@ async function fetchState() {
       const response = await fetch("/api/state", { headers: { Authorization: `Bearer ${requestToken}` }, signal: controller.signal, cache: "no-store", credentials: "omit", redirect: "error" });
       if (!response.ok) throw globalThis.__slaiErrors.codedError(response.status === 401 ? "VIEW_TOKEN_REJECTED" : "VIEW_UNREACHABLE", { httpStatus: response.status });
       const next = await response.json();
-      if (next.schemaVersion !== 1 || !Number.isFinite(Date.parse(next.serverTime)) || (next.state !== null && next.state?.schemaVersion !== 4)) throw globalThis.__slaiErrors.codedError("INVALID_SCHEMA");
+      if (next.schemaVersion !== 1 || !Number.isFinite(Date.parse(next.serverTime)) || (next.state !== null && next.state?.schemaVersion !== 5)) throw globalThis.__slaiErrors.codedError("INVALID_SCHEMA");
       if (revision !== credentialRevision) return;
       if (typeof updateRemoteRefresh === "function") updateRemoteRefresh(next);
       envelope = next; anchorTime = Date.parse(next.serverTime); anchorMono = performance.now(); lastContact = anchorTime;

@@ -88,6 +88,8 @@ async function createCompanion({ dir, lanHost = null, readPort = 32100, writePor
   const stateFile = path.join(dir, "attendance.json");
   try {
     const cached = JSON.parse(await fs.readFile(stateFile, "utf8"));
+    // Only local v4 caches may migrate. HTTP writes still require exact v5.
+    if (cached.schemaVersion === 1 && cached.state?.schemaVersion === 4) cached.state = globalThis.__slaiState.sanitizeState(cached.state);
     state = validateStateEnvelope({ schemaVersion: cached.schemaVersion, state: cached.state });
     if (!Number.isFinite(Date.parse(cached.receivedAt))) throw new Error();
     receivedAt = cached.receivedAt;

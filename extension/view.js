@@ -6,7 +6,7 @@ let forceFreeze = () => false;
 let mobileView = false;
 
 const $ = (id) => document.getElementById(id);
-const { localDateKey, secondsFromDuration, attendanceSeconds } = globalThis.__slaiTime;
+const { attendanceDateKey, secondsFromDuration, attendanceSeconds } = globalThis.__slaiTime;
 const { sanitizeState } = globalThis.__slaiState;
 const { diagnoseError, describeDiagnostic, diagnosticReport } = globalThis.__slaiErrors;
 const { setReportText, copyReport } = globalThis.__slaiReports;
@@ -50,18 +50,16 @@ function formatMonth(value) {
 }
 
 function displayMonth(state) {
-  return state.month || localDateKey(new Date(viewNow())).slice(0, 7);
+  return state.month || attendanceDateKey(new Date(viewNow())).slice(0, 7);
 }
 
 function swipeClock(timestamp) {
   return timestamp?.match(/\s(\d{2}:\d{2}:\d{2})$/)?.[1] || "";
 }
 
-function renderDays(state) {
-  const list = $("dayList");
-  const today = localDateKey(new Date(viewNow()));
+function monthModel(state) {
+  const today = attendanceDateKey(new Date(viewNow()));
   const month = displayMonth(state);
-  if ($("monthLabel")) $("monthLabel").textContent = month === today.slice(0, 7) ? "本月记录" : "历史记录 · 本月待同步";
   const lastDay = new Date(`${month}-01T00:00:00Z`);
   lastDay.setUTCMonth(lastDay.getUTCMonth() + 1, 0);
   const summaries = new Map((state.days || []).map(day => [day.date, day]));
@@ -77,17 +75,33 @@ function renderDays(state) {
     const seconds = day.date === today ? attendanceSeconds(state, viewNow(), { forceFreeze: forceFreeze() }).seconds : secondsFromDuration(day.duration);
     return seconds >= REQUIRED_SECONDS;
   }).length;
-  $("monthSummary").textContent = `${qualified} / ${workdays.length} 天达标 · 历史`;
+  return { today, month, days, summary: `${qualified} / ${workdays.length} 天达标 · 历史` };
+}
+
+function dayPresentation(day, state) {
+  const today = attendanceDateKey(new Date(viewNow()));
+  const attendance = day.date === today ? attendanceSeconds(state, viewNow(), { forceFreeze: forceFreeze() }) : null;
+  const seconds = attendance ? attendance.seconds : secondsFromDuration(day.duration);
+  const isFuture = day.date > today;
+  return {
+    seconds, isFuture, isToday: day.date === today,
+    tone: day.type !== "工作日" || isFuture ? "off" : seconds >= REQUIRED_SECONDS ? "good" : "short",
+    type: day.date === today ? "今日估算" : day.hasSummary ? day.type || "未分类" : isFuture ? "未到日期" : "待同步",
+    duration: attendance ? (attendance.available ? fullClockDuration(seconds) : "--:--:--") : !day.hasSummary ? "--:--:--" : (day.duration === "0" ? "0:00:00" : day.duration)
+  };
+}
+
+function renderDays(state) {
+  const list = $("dayList");
+  const { today, month, days, summary } = monthModel(state);
+  if ($("monthLabel")) $("monthLabel").textContent = month === today.slice(0, 7) ? "本月记录" : "历史记录 · 本月待同步";
+  $("monthSummary").textContent = summary;
+  if (globalThis.__slaiDesktop) { globalThis.__slaiDesktop.renderMonth({ today, month, days }, state); return; }
 
   list.innerHTML = days.map((day) => {
-    const seconds = day.date === today ? attendanceSeconds(state, viewNow(), { forceFreeze: forceFreeze() }).seconds : secondsFromDuration(day.duration);
-    const isOff = day.type !== "工作日";
-    const isFuture = day.date > today;
-    const tone = isOff || isFuture ? "off" : seconds >= REQUIRED_SECONDS ? "good" : "short";
+    const { tone, type, duration } = dayPresentation(day, state);
     const dateParts = day.date.split("-");
     const label = `${Number(dateParts[1])}/${Number(dateParts[2])}`;
-    const type = day.date === today ? "今日估算" : day.hasSummary ? day.type || "未分类" : isFuture ? "未到日期" : "待同步";
-    const duration = day.date === today ? (attendanceSeconds(state, viewNow(), { forceFreeze: forceFreeze() }).available ? fullClockDuration(seconds) : "--:--:--") : !day.hasSummary ? "--:--:--" : (day.duration === "0" ? "0:00:00" : day.duration);
     return `
       <div class="day-row ${day.date === today ? "today" : ""}">
         <div class="day-date"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(day.weekday || "")}</span></div>
@@ -137,6 +151,7 @@ function renderToday(state) {
   } else {
     $("statusText").textContent = "今日完整明细暂无校园进出记录";
   }
+  globalThis.__slaiDesktop?.renderToday(attendance, state);
 }
 
 function formatInstant(value) {
@@ -146,8 +161,8 @@ function formatInstant(value) {
 function render(state) {
   state = sanitizeState(state);
   currentState = state;
-  $("todayLabel").textContent = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "long", day: "numeric", weekday: "long" }).format(new Date(viewNow()));
-  lastRenderedDate = localDateKey(new Date(viewNow()));
+  lastRenderedDate = attendanceDateKey(new Date(viewNow()));
+  $("todayLabel").textContent = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "long", day: "numeric", weekday: "long" }).format(new Date(lastRenderedDate + "T12:00:00+08:00")) + " · 考勤日";
   renderToday(state);
   $("monthTitle").textContent = formatMonth(displayMonth(state));
   $("updatedAt").textContent = formatUpdated(state);
@@ -175,7 +190,7 @@ async function copyDiagnostic() {
 }
 
 function updateNextRefresh() {
-  if (currentState && lastRenderedDate !== localDateKey(new Date(viewNow()))) { render(currentState); return; }
+  if (currentState && lastRenderedDate !== attendanceDateKey(new Date(viewNow()))) { render(currentState); return; }
   if (mobileView) { if (currentState) renderToday(currentState); return; }
   if (currentState) renderToday(currentState);
   if (!currentState?.nextRefreshAt) {

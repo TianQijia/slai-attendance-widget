@@ -14,12 +14,14 @@ const root = path.resolve(__dirname, "..");
       const html = await fs.readFile(path.join(root, mobile ? "companion/viewer.html" : "extension/widget.html"), "utf8");
       await page.setContent(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/<link\b[^>]*>/g, ""));
       await page.addStyleTag({ path: path.join(root, "extension/widget.css") });
+      if (!mobile) await page.addStyleTag({ path: path.join(root, "extension/desktop.css") });
       for (const file of ["error-utils.js", "time-utils.js", "state-utils.js", "report-utils.js", "view.js"]) await page.addScriptTag({ path: path.join(root, "extension", file) });
+      if (!mobile) { await page.addScriptTag({ path: path.join(root, "extension/desktop-view.js") }); await page.locator("#listView").click(); }
       await page.evaluate(value => { mobileView = value; }, mobile);
       const renderAt = (date, state) => page.evaluate(({ date, state }) => { viewNow = () => Date.parse(date); render(state); }, { date, state });
       const labels = () => page.locator(".day-date strong").allTextContents();
       const row = label => page.locator(".day-row").filter({ has: page.locator(".day-date strong", { hasText: new RegExp(`^${label}$`) }) });
-      const march = { status: "ok", month: "2030-03", days: [
+      const march = { schemaVersion: 5, status: "ok", month: "2030-03", days: [
         { date: "2030-03-27", type: "工作日", duration: "06:00:00" },
         { date: "2030-03-28", type: "工作日", duration: "03:00:00" },
         { date: "2030-04-01", type: "工作日", duration: "06:00:00" }
@@ -29,21 +31,24 @@ const root = path.resolve(__dirname, "..");
       await renderAt("2030-03-31T23:59:59+08:00", march);
       assert.equal(await page.locator("#monthTitle").innerText(), "2030 年 3 月");
       assert.equal((await labels()).length, 31); assert.equal((await labels()).at(-1), "3/31");
-      assert.equal(await page.locator("#monthSummary").innerText(), "1 / 2 天达标 · 历史");
+      assert.equal(await page.locator("#monthSummary").textContent(), "1 / 2 天达标 · 历史");
       assert.match(await row("3/29").innerText(), /待同步[\s\S]*--:--:--/);
       assert.equal(await page.locator("#todayDuration").innerText(), "00:59:59");
       await page.evaluate(() => { viewNow = () => Date.parse("2030-04-01T00:00:01+08:00"); updateNextRefresh(); });
       assert.equal(await page.locator("#monthTitle").innerText(), "2030 年 3 月");
       assert(!(await labels()).includes("4/1"), "Cached March history must never acquire an April row at midnight");
-      assert.equal(await page.locator("#monthLabel").innerText(), "历史记录 · 本月待同步");
+      assert.equal(await page.locator(".day-row.today").count(), 1);
+      assert.equal(await page.locator("#todayDuration").innerText(), "01:00:01");
+      await page.evaluate(() => { viewNow = () => Date.parse("2030-04-01T05:00:00+08:00"); updateNextRefresh(); });
+      assert.equal(await page.locator("#monthLabel").textContent(), "历史记录 · 本月待同步");
       assert.equal(await page.locator(".day-row.today").count(), 0);
       assert.equal(await page.locator("#todayDuration").innerText(), "--:--:--");
-      assert.equal(await page.locator("#monthSummary").innerText(), "1 / 2 天达标 · 历史");
+      assert.equal(await page.locator("#monthSummary").textContent(), "1 / 2 天达标 · 历史");
 
-      await renderAt("2030-04-01T12:00:00+08:00", { status: "ok", month: "2030-04", days: [], updatedAt: "2030-04-01T04:00:00Z",
+      await renderAt("2030-04-01T12:00:00+08:00", { schemaVersion: 5, status: "ok", month: "2030-04", days: [], updatedAt: "2030-04-01T04:00:00Z",
         lastCompleteToday: { date: "2030-04-01", updatedAt: "2030-04-01T04:00:00Z", swipes: [] } });
       assert.equal(await page.locator("#monthTitle").innerText(), "2030 年 4 月");
-      assert.equal(await page.locator("#monthLabel").innerText(), "本月记录");
+      assert.equal(await page.locator("#monthLabel").textContent(), "本月记录");
       assert.equal((await labels()).length, 30); assert.equal((await labels()).at(-1), "4/30");
       assert.equal(await page.locator(".day-row.today .day-date strong").innerText(), "4/1");
       assert.equal(await page.locator("#todayDuration").innerText(), "00:00:00");
@@ -55,7 +60,7 @@ const root = path.resolve(__dirname, "..");
       ] });
       assert.match(await row("4/26").innerText(), /待同步[\s\S]*--:--:--/);
       for (const date of ["4/28", "4/29", "4/30"]) assert.match(await row(date).innerText(), /未到日期[\s\S]*--:--:--/);
-      assert.equal(await page.locator("#monthSummary").innerText(), "1 / 1 天达标 · 历史", "Missing days and today must not change the historical denominator");
+      assert.equal(await page.locator("#monthSummary").textContent(), "1 / 1 天达标 · 历史", "Missing days and today must not change the historical denominator");
       for (const width of mobile ? [320, 360, 390] : [440]) {
         await page.setViewportSize({ width, height: 900 });
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Calendar overflow at ${width}px`);
@@ -68,7 +73,7 @@ const root = path.resolve(__dirname, "..");
         await renderAt(`${month}-27T12:00:00+08:00`, { status: "loading", month, days: [] });
         assert.equal((await labels()).length, count);
         assert.equal((await labels()).at(-1), `${Number(month.slice(5))}/${count}`);
-        assert.equal(await page.locator("#monthSummary").innerText(), "0 / 0 天达标 · 历史");
+        assert.equal(await page.locator("#monthSummary").textContent(), "0 / 0 天达标 · 历史");
       }
       await page.evaluate(() => { viewNow = () => Date.parse("2031-01-01T00:00:01+08:00"); updateNextRefresh(); });
       assert.equal(await page.locator("#monthTitle").innerText(), "2030 年 12 月");

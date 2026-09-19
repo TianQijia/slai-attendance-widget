@@ -129,12 +129,12 @@ async function unpack(file, dir, names) {
       throw error;
     }
     const complete = await worker.evaluate(async () => {
-      const date = localDateKey(); const updatedAt = new Date().toISOString();
-      return saveState({ status: "ok", month: date.slice(0, 7), days: [], updatedAt, summaryUpdatedAt: updatedAt,
-        todaySwipes: [{ timestamp: date + " 00:00:00", direction: "进门" }, { timestamp: date + " 00:00:00", direction: "出门" }], studentName: "PRIVATE_FIXTURE" });
+      const date = attendanceDateKey(); const updatedAt = new Date().toISOString();
+      return saveState({ schemaVersion: 5, status: "ok", month: date.slice(0, 7), days: [], updatedAt, summaryUpdatedAt: updatedAt,
+        todaySwipes: [{ timestamp: date + " 05:00:00", direction: "进门" }, { timestamp: date + " 05:00:00", direction: "出门" }], studentName: "PRIVATE_FIXTURE" });
     });
     await until(async () => (await read()).state?.status === "ok");
-    const pushed = await read(); assert.equal(pushed.state.schemaVersion, 4); assert.equal(pushed.state.updatedAt, complete.updatedAt);
+    const pushed = await read(); assert.equal(pushed.state.schemaVersion, 5); assert.equal(pushed.state.updatedAt, complete.updatedAt);
     assert(!JSON.stringify(pushed).includes("PRIVATE_FIXTURE"));
     const network = await invoke("diagnose");
     assert.match(network.stdout, /NET_HTTP_OK/); assert.match(network.stdout, /NET_EXTENSION_RECENT/);

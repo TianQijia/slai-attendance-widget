@@ -40,6 +40,13 @@ function showBridge(update) {
   if (typeof info.enabled === "boolean") $("bridgeStatus").textContent = info.enabled ? "手机查看已启用" : "尚未启用";
   setReportText($("bridgeReport"), [info.diagnostic, info.refreshDiagnostic].filter(Boolean).map(value => diagnosticReport(value)).join("\n\n"));
   if (info.diagnostic || info.refreshDiagnostic) $("bridgeStatus").textContent = describeDiagnostic(info.diagnostic || info.refreshDiagnostic).reason;
+  const summary = $("bridgeSummaryStatus");
+  if (summary) {
+    const failure = info.diagnostic || info.refreshDiagnostic;
+    summary.textContent = failure ? "需处理" : info.enabled ? "已启用" : "未启用";
+    summary.dataset.error = String(Boolean(failure));
+    summary.title = failure ? describeDiagnostic(failure).reason : "折叠不影响连接";
+  }
 }
 async function bridgeRequest(message) {
   try {

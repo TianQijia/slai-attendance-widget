@@ -11,6 +11,7 @@ let refreshPromise = null;
 
 function defaultState() {
   return {
+    schemaVersion: 5,
     status: "loading",
     message: "正在读取考勤…",
     requiredSeconds: REQUIRED_SECONDS,
@@ -40,7 +41,8 @@ async function getState() {
 async function migrateStorage() {
   await chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
   const stored = await chrome.storage.local.get(null);
-  const obsolete = Object.keys(stored).filter((key) => ![STATE_KEY, "widgetWindowId", "bridgeSettings", "bridgeDiagnostic", "refreshDiagnostic"].includes(key));
+  const obsolete = Object.keys(stored).filter((key) => ![STATE_KEY, "widgetWindowId", "bridgeSettings", "bridgeDiagnostic", "refreshDiagnostic", "desktopView"].includes(key));
+  if (stored.desktopView !== undefined && !["calendar", "list"].includes(stored.desktopView)) obsolete.push("desktopView");
   if (stored.widgetWindowId !== undefined && !Number.isInteger(stored.widgetWindowId)) obsolete.push("widgetWindowId");
   if (obsolete.length) await chrome.storage.local.remove(obsolete);
   if (stored[STATE_KEY]) await chrome.storage.local.set({ [STATE_KEY]: sanitizeState(stored[STATE_KEY]) });
@@ -86,7 +88,7 @@ function isPortalUrl(url) {
   }
 }
 
-const { localDateKey } = globalThis.__slaiTime;
+const { localDateKey, attendanceDateKey, attendanceWindow, attendanceQueryDates, timestampMs } = globalThis.__slaiTime;
 
 function waitForTab(tabId, expectedUrlPart = "slai.edu.cn", timeoutMs = 30000) {
   return new Promise((resolve, reject) => {
@@ -166,17 +168,18 @@ async function waitForReader(tabId, method, accept, timeoutMs = 10000) {
   return value;
 }
 
-async function collectSwipePages(tabId, queryDate) {
+async function collectSwipePages(tabId, queryDate, budget = { pages: 0 }, window = attendanceWindow(queryDate)) {
   const records = new Map();
   const visited = new Set();
   let previous = null;
   let rowsRead = 0;
   let expectedTotal = null;
   for (let index = 0; index < 50; index++) {
+    if (budget.pages >= 50) break;
     const deadline = Date.now() + 15000;
     let page = null;
     let lastReaderError = null;
-    const details = { stage: "read_swipes", page: index + 1, rowsRead, expectedTotal, timeoutMs: 15000 };
+    const details = { stage: "read_swipes", page: budget.pages + 1, rowsRead, expectedTotal, timeoutMs: 15000 };
     do {
       let tab;
       try {
@@ -206,6 +209,7 @@ async function collectSwipePages(tabId, queryDate) {
     } while (Date.now() < deadline);
     if (!page) throw lastReaderError ? withErrorDetails(lastReaderError, details) : readerError('SWIPE_TIMEOUT', '刷卡分页读取未完成', details);
     const meta = page.pagination;
+    budget.pages++;
     const pageDetails = { ...details, currentPage: meta.current, actualTotal: meta.total };
     if (visited.has(meta.signature) || (index === 0 && meta.current !== 1)) throw readerError('SWIPE_DUPLICATE', '刷卡分页重复', pageDetails);
     visited.add(meta.signature);
@@ -213,20 +217,21 @@ async function collectSwipePages(tabId, queryDate) {
     if (expectedTotal !== meta.total) throw readerError('SWIPE_CHANGED', '刷卡记录在读取期间变化', pageDetails);
     rowsRead += meta.rowCount;
     for (const record of page.records) {
-      if (record.timestamp.startsWith(queryDate + ' ')) records.set(record.timestamp + '|' + record.direction, record);
+      const at = timestampMs(record.timestamp);
+      if (at >= window.start && at < window.end) records.set(record.timestamp + '|' + record.direction, record);
     }
     if (!meta.hasNext) {
       if (expectedTotal !== null && rowsRead !== expectedTotal) throw readerError('SWIPE_INCOMPLETE', '刷卡记录未读取完整', { ...pageDetails, rowsRead, expectedTotal });
       return [...records.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
     }
-    if (index === 49) break;
+    if (budget.pages >= 50) break;
     previous = meta;
     // Each page is an additional school request, so never fetch pages concurrently.
     await delay(1500);
     try {
       if (!await runReader(tabId, 'advanceSwipePage')) throw readerError('SWIPE_NEXT', '无法翻到下一页');
     } catch (error) {
-      throw withErrorDetails(error, { stage: "advance_swipes", operation: "advance_page", page: index + 2, currentPage: meta.current, rowsRead, expectedTotal });
+      throw withErrorDetails(error, { stage: "advance_swipes", operation: "advance_page", page: budget.pages + 1, currentPage: meta.current, rowsRead, expectedTotal });
     }
   }
   throw readerError('SWIPE_LIMIT', '刷卡页数超过安全上限', { stage: "read_swipes", page: 50, rowsRead, expectedTotal });
@@ -282,18 +287,38 @@ async function scrapeAttendance({ sourceTabId = null } = {}) {
     summaryUpdatedAt = new Date().toISOString();
     if (!studentNumber) throw readerError("STUDENT_NUMBER_MISSING", "缺少查询明细所需的学号");
     stage = "open_swipes";
-    let todaySwipes = [];
-    const queryDate = localDateKey();
-    if (studentNumber) {
+    const queryDate = attendanceDateKey();
+    const window = attendanceWindow(queryDate);
+    const queried = new Set();
+    const records = new Map();
+    const budget = { pages: 0 };
+    // A school summary can switch calendar months at midnight, five hours
+    // before our attendance month. Keep only a correctly labelled summary.
+    if (summary.month === localDateKey().slice(0, 7) && summary.month !== queryDate.slice(0, 7)) {
+      const cached = await getState();
+      const matching = cached.month === queryDate.slice(0, 7);
+      attendanceData = { month: queryDate.slice(0, 7), days: matching ? cached.days : [] };
+      summaryUpdatedAt = matching ? cached.summaryUpdatedAt : null;
+    }
+    // Re-evaluate civil dates after each query: a refresh can cross midnight.
+    // The budget covers BOTH queries, not fifty pages per date.
+    while (true) {
+      if (attendanceDateKey() !== queryDate) throw readerError("ATTENDANCE_DAY_CHANGED", "读取期间已跨过05:00", { stage: "read_swipes" });
+      const civilDate = attendanceQueryDates().find(value => !queried.has(value));
+      if (!civilDate) break;
+      if (budget.pages >= 50) throw readerError("SWIPE_LIMIT", "刷卡页数超过安全上限", { stage: "read_swipes", page: 50 });
+      if (queried.size) await delay(1500);
+      stage = "open_swipes";
       const recordsUrl = attendanceUrl.replace(
         /\/edu\/acm\/swipe\/attendList(?:[?#].*)?$/,
-        `/edu/acm/swipe/list?userNo=${encodeURIComponent(studentNumber)}&swipeDate=${queryDate}`
+        `/edu/acm/swipe/list?userNo=${encodeURIComponent(studentNumber)}&swipeDate=${civilDate}`
       );
       if (recordsUrl !== attendanceUrl) {
         await chrome.tabs.update(tab.id, { url: recordsUrl });
         tab = await waitForTab(tab.id, "/edu/acm/swipe/list");
         stage = "read_swipes";
-        todaySwipes = await collectSwipePages(tab.id, queryDate);
+        for (const record of await collectSwipePages(tab.id, civilDate, budget, window)) records.set(record.timestamp + "|" + record.direction, record);
+        queried.add(civilDate);
       } else {
         throw readerError("SWIPE_ROUTE_MISSING", "无法确定今日明细地址");
       }
@@ -301,8 +326,10 @@ async function scrapeAttendance({ sourceTabId = null } = {}) {
 
     stage = "save_state";
     const completedAt = new Date().toISOString();
+    if (attendanceDateKey(new Date(completedAt)) !== queryDate) throw readerError("ATTENDANCE_DAY_CHANGED", "读取期间已跨过05:00", { stage: "save_state" });
+    const todaySwipes = [...records.values()].filter(record => timestampMs(record.timestamp) <= Date.parse(completedAt)).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
     await saveState({
-      schemaVersion: 4,
+      schemaVersion: 5,
       lastCompleteToday: { date: queryDate, swipes: todaySwipes, updatedAt: completedAt },
       status: "ok",
       message: "考勤已更新",

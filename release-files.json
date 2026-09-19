@@ -63,7 +63,27 @@
     "extension/remote-refresh.js",
     "companion/refresh-control.js",
     "companion/viewer-refresh.js",
-    "tests/refresh-test.js"
+    "tests/refresh-test.js",
+    "extension/desktop.css",
+    "extension/desktop-view.js",
+    "extension/icons/slai-16.png",
+    "extension/icons/slai-32.png",
+    "extension/icons/slai-48.png",
+    "extension/icons/slai-64.png",
+    "extension/icons/slai-128.png",
+    "extension/icons/slai-256.png",
+    "extension/icons/refresh.svg",
+    "extension/icons/external-link.svg",
+    "extension/icons/NOTICE.md",
+    "extension/icons/TABLER-LICENSE.txt",
+    "scripts/prepare-icons.ps1",
+    "tests/attendance-day-test.js",
+    "tests/desktop-test.js",
+    "tests/desktop-fixture.js",
+    "scripts/preview.js",
+    "docs/demo-dark.png",
+    "design-qa.md",
+    "docs/design-target.png"
   ],
   "archive": [
     "manifest.json",
@@ -81,7 +101,19 @@
     "view.js",
     "report-utils.js",
     "refresh-utils.js",
-    "remote-refresh.js"
+    "remote-refresh.js",
+    "desktop.css",
+    "desktop-view.js",
+    "icons/slai-16.png",
+    "icons/slai-32.png",
+    "icons/slai-48.png",
+    "icons/slai-64.png",
+    "icons/slai-128.png",
+    "icons/slai-256.png",
+    "icons/refresh.svg",
+    "icons/external-link.svg",
+    "icons/NOTICE.md",
+    "icons/TABLER-LICENSE.txt"
   ],
   "companion": [
     "LICENSE",
@@ -105,7 +137,10 @@
     "companion/refresh-control.js",
     "companion/viewer-refresh.js",
     "docs/mobile.md",
-    "docs/demo.png"
+    "docs/demo.png",
+    "docs/demo-dark.png",
+    "extension/icons/NOTICE.md",
+    "extension/icons/TABLER-LICENSE.txt"
   ],
   "companionPlatforms": {
     "darwin-arm64": [

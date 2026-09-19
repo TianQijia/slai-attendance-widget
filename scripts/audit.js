@@ -40,9 +40,15 @@ function audit() {
     assert(!fs.lstatSync(path.join(root, name)).isSymbolicLink());
     assert.equal(crypto.createHash("sha256").update(fs.readFileSync(path.join(root, name))).digest("hex"), sha256, `Bundled dependency differs from its allowlisted SHA-256: ${name}`);
   }
-  for (const name of list.source.filter((file) => file.startsWith("extension/"))) {
+  for (const name of list.source.filter((file) => file.startsWith("extension/") && /\.(?:js|html|css|json)$/.test(file))) {
     const content = fs.readFileSync(path.join(root, name), "utf8");
     assert(!/document\.cookie|chrome\.cookies|storage\.sync/.test(content), `Unexpected credential/sync API in ${name}`);
+  }
+  for (const [size, file] of Object.entries(manifest.icons)) {
+    assert(list.archive.includes(file) && list.source.includes("extension/" + file));
+    const png = fs.readFileSync(path.join(root, "extension", file));
+    assert.equal(png.readUInt32BE(16), Number(size));
+    assert.equal(png.readUInt32BE(20), Number(size));
   }
   return list;
 }

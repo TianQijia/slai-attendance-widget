@@ -14,8 +14,11 @@ const root = path.resolve(__dirname, "..");
   const data = unzipSync(fs.readFileSync(path.join(root, "dist", `slai-attendance-widget-v${require("../package.json").version}.zip`)));
   assert.deepEqual(Object.keys(data).sort(), require("../release-files.json").archive.sort());
   for (const [name, bytes] of Object.entries(data)) {
-    assert.equal(path.basename(name), name);
-    fs.writeFileSync(path.join(extension, name), bytes);
+    assert(!path.isAbsolute(name) && !name.split(/[\\/]/).includes(".."));
+    const output = path.resolve(extension, name);
+    assert(output.startsWith(extension + path.sep));
+    fs.mkdirSync(path.dirname(output), { recursive: true });
+    fs.writeFileSync(output, bytes);
   }
   let context;
   let mode = "auth";
@@ -23,7 +26,7 @@ const root = path.resolve(__dirname, "..");
   const visitedPages = [];
   try {
     context = await chromium.launchPersistentContext(path.join(temporary, "profile"), {
-      channel: "chromium", headless: true, timezoneId: "Asia/Shanghai",
+      channel: "chromium", headless: true, timezoneId: "Asia/Shanghai", viewport: null,
       executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined,
       ignoreDefaultArgs: ["--disable-extensions"],
       args: ["--enable-unsafe-extension-debugging",
@@ -73,9 +76,26 @@ const root = path.resolve(__dirname, "..");
     const page = await context.newPage();
     await page.goto(`chrome-extension://${id}/widget.html`);
     await page.locator("#authCard:not(.hidden)").waitFor();
-    assert.match(await page.locator("#nextRefresh").innerText(), /自动刷新已暂停/);
+    assert.match(await page.locator("#nextRefresh").textContent(), /自动刷新已暂停/);
     const version = await worker.evaluate(() => chrome.runtime.getManifest().version);
     assert.equal(version, require("../package.json").version);
+    assert.equal(await page.locator('.brand img').evaluate(img => img.complete && img.naturalWidth), 128);
+    for (const size of [16, 32, 48, 64, 128, 256]) {
+      assert.equal(await page.evaluate(async size => {
+        const img = new Image(); img.src = `icons/slai-${size}.png`; await img.decode(); return img.naturalWidth;
+      }, size), size, "Installed ZIP must contain every sharp icon size");
+    }
+    const iconHref = await page.locator('link[rel=icon][sizes="128x128"]').getAttribute("href");
+    assert.equal(iconHref, "icons/slai-128.png");
+    const popup = await worker.evaluate(async () => {
+      const windows = await chrome.windows.getAll({ populate: true });
+      const found = windows.find(window => window.type === "popup" && window.tabs.some(tab => tab.url?.endsWith("/widget.html")));
+      return found && { width: found.width, height: found.height };
+    });
+    assert.equal(popup?.width, 410);
+    // Headless Chrome can clamp the requested 620px to its virtual screen's
+    // 600px height. Do not confuse that with a native-desktop size regression.
+    assert(popup.height >= 500 && popup.height <= 620);
 
     await worker.evaluate(() => {
       const NativeDate = Date;
@@ -122,7 +142,7 @@ const root = path.resolve(__dirname, "..");
     assert.deepEqual(visitedPages, [1, 2]);
     await page.waitForFunction(() => document.querySelector("#statusText").textContent.includes("学校汇总"));
     assert.equal(await page.locator("#todayDuration").innerText(), "03:00:00");
-    assert.match(await page.locator("#updatedAt").innerText(), /汇总更新于/);
+    assert.match(await page.locator("#updatedAt").textContent(), /汇总更新于/);
     await page.locator("#diagnosticDetails summary").click();
     assert.match(await page.locator("#diagnosticReport").innerText(), /目标页：第 2 页/);
     assert.match(await page.locator("#diagnosticReport").innerText(), /预期总数：23 条/);

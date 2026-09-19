@@ -1,107 +1,70 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SLAI 考勤</title>
-    <link rel="stylesheet" href="widget.css">
-  </head>
-  <body>
-    <main class="shell">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow" id="todayLabel">今日考勤</p>
-          <h1>在校时间</h1>
-        </div>
-        <div class="top-actions">
-          <button class="icon-button" id="openPortal" title="打开学校系统" aria-label="打开学校系统">↗</button>
-          <button class="icon-button" id="refresh" title="立即刷新" aria-label="立即刷新">↻</button>
-        </div>
-      </header>
-
-      <section class="today-card">
-        <div class="progress-ring" id="progressRing">
-          <div class="progress-core">
-            <strong id="todayDuration">--:--</strong>
-            <span>已累计</span>
-          </div>
-        </div>
-        <div class="today-detail">
-          <div class="status-line">
-            <span class="status-dot" id="statusDot"></span>
-            <span id="statusText">正在读取</span>
-          </div>
-          <div class="metric">
-            <span>每日要求</span>
-            <strong>6 小时</strong>
-          </div>
-          <div class="metric remaining">
-            <span id="remainingLabel">距离完成</span>
-            <strong id="remaining">--</strong>
-          </div>
-        </div>
-      </section>
-
-      <p class="source-note" id="dataSource">暂无可靠数据</p>
-
-      <section class="auth-card hidden" id="authCard">
-        <div>
-          <strong>需要重新登录</strong>
-          <p>请使用自己的学校账号登录。小组件不会读取或保存密码。</p>
-        </div>
-        <button id="login">去登录</button>
-      </section>
-
-      <section class="diagnostic-card hidden" id="diagnosticCard" aria-label="排错信息">
-        <div class="diagnostic-heading">
-          <strong>排错信息</strong>
-          <button id="copyDiagnostic" type="button">复制排错信息</button>
-        </div>
-        <p id="diagnosticAction"></p>
-        <details id="diagnosticDetails">
-          <summary>查看错误代码和现场细节</summary>
-          <pre id="diagnosticReport"></pre>
-        </details>
-        <span class="copy-status" id="copyStatus" role="status"></span>
-      </section>
-
-      <section class="month-section">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow" id="monthLabel">本月记录</p>
-            <h2 id="monthTitle">---- 年 -- 月</h2>
-          </div>
-          <span class="summary" id="monthSummary">-- / -- 天达标</span>
-        </div>
-        <div class="day-list" id="dayList">
-          <div class="skeleton"></div>
-          <div class="skeleton"></div>
-          <div class="skeleton"></div>
-        </div>
-      </section>
-
-      <details class="diagnostic-card" id="bridgeSettings">
-        <summary>手机查看 · 本机连接</summary>
-        <p>先运行伴随服务，再粘贴本机配对码。手机查看只接收脱敏考勤。</p>
-        <label for="bridgeToken">本机配对码</label>
-        <input id="bridgeToken" type="password" autocomplete="off" spellcheck="false">
-        <button id="enableBridge" type="button">启用并连接</button>
-        <button id="disableBridge" type="button">关闭连接</button>
-        <p id="bridgeStatus" role="status">尚未启用</p>
-        <pre id="bridgeReport"></pre>
-        <button id="copyBridge" type="button">复制连接排错信息</button>
-      </details>
-      <footer>
-        <span id="summaryUpdatedAt">学校汇总尚未更新</span>
-        <span id="updatedAt">尚未更新</span>
-        <span id="nextRefresh">每 30 分钟自动刷新</span>
-      </footer>
-    </main>
-    <script src="error-utils.js"></script>
-    <script src="time-utils.js"></script>
-    <script src="state-utils.js"></script>
-    <script src="report-utils.js"></script>
-    <script src="view.js"></script>
-    <script src="widget.js"></script>
-  </body>
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark"><title>SLAI 考勤</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/slai-32.png">
+  <link rel="icon" type="image/png" sizes="128x128" href="icons/slai-128.png">
+  <link rel="stylesheet" href="widget.css"><link rel="stylesheet" href="desktop.css">
+</head>
+<body class="desktop">
+<main class="shell">
+  <header class="topbar">
+    <div class="brand"><img src="icons/slai-128.png" width="38" height="38" alt="深圳河套学院校徽"><h1>SLAI 考勤</h1></div>
+    <div class="top-actions">
+      <button class="icon-button" id="openPortal" title="打开学校系统" aria-label="打开学校系统"><img src="icons/external-link.svg" alt=""></button>
+      <button class="icon-button" id="refresh" title="立即刷新" aria-label="立即刷新"><img src="icons/refresh.svg" alt=""></button>
+    </div>
+  </header>
+  <p class="eyebrow" id="todayLabel">今日考勤</p>
+  <section class="today-card" aria-label="今日在校时间">
+    <div class="progress-ring" id="progressRing" role="progressbar" aria-label="今日6小时目标" aria-valuemin="0" aria-valuemax="21600">
+      <canvas id="ringCanvas" width="320" height="320" aria-hidden="true"></canvas>
+      <div class="progress-core"><span>今日在校</span><strong id="todayDuration">--:--:--</strong><span>目标 6 小时</span></div>
+    </div>
+    <div class="today-detail">
+      <div class="status-line"><span class="status-dot" id="statusDot" aria-hidden="true"></span><span id="statusText">正在读取</span></div>
+      <div class="metric remaining"><span id="remainingLabel">距离完成</span><strong id="remaining">--</strong></div>
+    </div>
+  </section>
+  <section class="auth-card hidden" id="authCard"><div><strong>需要重新登录</strong><p>请使用自己的学校账号登录。小组件不会读取或保存密码。</p></div><button id="login">去登录</button></section>
+  <section class="diagnostic-card hidden" id="diagnosticCard" aria-label="排错信息">
+    <div class="diagnostic-heading"><strong>排错信息</strong><button id="copyDiagnostic" type="button">复制排错信息</button></div>
+    <p id="diagnosticAction"></p><details id="diagnosticDetails"><summary>查看错误代码和现场细节</summary><pre id="diagnosticReport"></pre></details>
+    <span class="copy-status" id="copyStatus" role="status"></span>
+  </section>
+  <section class="month-section" aria-label="月度考勤记录">
+    <p class="eyebrow" id="monthLabel">本月记录</p>
+    <div class="section-heading">
+      <h2 id="monthTitle">---- 年 -- 月</h2>
+      <div class="view-switch" role="group" aria-label="月记录显示方式">
+        <button id="calendarView" type="button" aria-pressed="true" aria-controls="monthCalendar">日历</button>
+        <button id="listView" type="button" aria-pressed="false" aria-controls="dayList">列表</button>
+      </div>
+    </div>
+    <div id="monthCalendar" class="month-calendar" aria-label="考勤日历"></div>
+    <div class="day-list" id="dayList" hidden></div>
+    <details class="month-stats"><summary>月度统计</summary><p class="summary" id="monthSummary">-- / -- 天达标</p><p>绿点：已达6小时，含节假日；黄点：工作日未达标。未达标节假日、未来及待同步日期不标点；当前考勤日按可靠估算显示状态点。</p><p>历史达标统计仅包含学校已提供汇总的历史工作日，目标6小时；不包含当前考勤日。</p></details>
+  </section>
+  <details class="connection-settings" id="bridgeSettings">
+    <summary>手机连接<span id="bridgeSummaryStatus">未启用</span></summary>
+    <p>先运行同版本伴随服务，再粘贴本机配对码。折叠此处不会断开连接。</p>
+    <label for="bridgeToken">本机配对码</label><input id="bridgeToken" type="password" autocomplete="off" spellcheck="false">
+    <div class="connection-actions"><button id="enableBridge" type="button">启用并连接</button><button id="disableBridge" type="button">关闭连接</button></div>
+    <p id="bridgeStatus" role="status">尚未启用</p><pre id="bridgeReport"></pre><button id="copyBridge" type="button">复制连接排错信息</button>
+  </details>
+  <section class="timeline-section" aria-label="当日在校时段">
+    <div class="section-heading"><h2>当日在校时段</h2><span id="updatedAt">尚未更新</span></div>
+    <canvas id="timelineCanvas" height="28" role="img" aria-label="暂无可靠数据"></canvas>
+    <div class="timeline-ticks" aria-hidden="true"><span>05:00</span><span>17:00</span><span>次日05:00</span></div>
+    <details class="timeline-details"><summary>查看时段与统计说明</summary><ul id="timelineIntervals"></ul>
+      <p>考勤日为05:00至次日05:00。跨界进出整段作废，恰好05:00出校也不结算前一天；未出校时仅为估算。</p>
+      <p id="dataSource">暂无可靠数据</p><p id="summaryUpdatedAt">学校汇总尚未更新</p><p id="nextRefresh">每30分钟自动刷新</p>
+      <p>学生自制非官方工具，最终以学校系统为准。</p>
+    </details>
+  </section>
+</main>
+<dialog id="dayDialog" aria-labelledby="dayDialogTitle"><h2 id="dayDialogTitle"></h2><strong id="dayDialogDuration"></strong><p id="dayDialogType"></p><p id="dayDialogSource"></p><form method="dialog"><button>关闭</button></form></dialog>
+<script src="error-utils.js"></script><script src="time-utils.js"></script><script src="state-utils.js"></script><script src="report-utils.js"></script><script src="view.js"></script><script src="desktop-view.js"></script><script src="widget.js"></script>
+</body>
 </html>

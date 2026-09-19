@@ -2,9 +2,11 @@
 
 [返回安装说明](../README.md#手机查看四步连接)
 
-手机显示由电脑 Chrome 扩展同步的考勤；电脑需要持续运行 Chrome 和伴随服务。支持 Windows x64 与 Apple Silicon Mac，两个包都内置 Node.js 22.23.2。1.2.0 只支持同一可信局域网中的 HTTP 查看，不含 Tailscale、HTTPS、离线 PWA 或 APK。
+手机显示由电脑 Chrome 扩展同步的考勤；电脑需要持续运行 Chrome 和伴随服务。支持 Windows x64 与 Apple Silicon Mac，两个包都内置 Node.js 22.23.2。1.3.0 只支持同一可信局域网中的 HTTP 查看，不含 Tailscale、HTTPS、离线 PWA 或 APK。
 
-**扩展提示 Manifest file is missing or unreadable：** Chrome 应加载 `slai-attendance-widget-v1.2.0.zip` 的解压目录，第一层应有 `manifest.json`。伴随服务包里的 `extension` 只是手机页面共用文件，不能加载为扩展。使用源码时才选择源码根目录下的完整 `extension` 文件夹。
+**手机端界面未作新版视觉适配，待更新。** 本版保持手机原有布局；统计模块已同步升级为北京时间 05:00 至次日 05:00，跨 05:00 的整段作废。完整规则见 [如何计算](../README.md#如何计算)。
+
+**扩展提示 Manifest file is missing or unreadable：** Chrome 应加载 `slai-attendance-widget-v1.3.0.zip` 的解压目录，第一层应有 `manifest.json`。伴随服务包里的 `extension` 只是手机页面共用文件，不能加载为扩展。使用源码时才选择源码根目录下的完整 `extension` 文件夹。
 
 **下载了 Source code：** GitHub 自动生成的 Source code 是给开发者的源码，源码中的 `companion/start.cmd` 缺少配套运行时，不能直接双击启动。普通使用请通过 README 的直接链接下载扩展包和手机服务包。发布页的 `SHA256SUMS.txt` 可用于核对下载文件的 SHA-256。
 
@@ -13,9 +15,11 @@
 **从旧版本或测试包更新：**
 
 1. 关闭扩展小窗，在旧伴随服务的 `companion` 文件夹运行 `stop.cmd`（Windows）或 `stop.command`（Mac）。只使用电脑扩展的用户可跳过服务步骤。
-2. 将新版扩展 ZIP 解压覆盖原扩展目录，在 `chrome://extensions` 点击“重新加载”，确认版本为 1.2.0。
+2. 将新版扩展 ZIP 解压覆盖原扩展目录，在 `chrome://extensions` 点击“重新加载”，确认版本为 1.3.0。
 3. 将新版伴随服务 ZIP 解压到原来的长期保留目录，覆盖旧程序文件；不要删除用户数据目录。运行新版 `start` 启动器，原配对码与查看令牌保留。
 4. 手机重新打开电脑给出的查看链接。若变更了程序保存目录，重新设置自动启动，并检查新路径的防火墙规则。
+
+扩展和服务必须一起升级。旧缓存迁移至 `schemaVersion: 5` 后保留历史与配对，但旧“今日”快照失效，等待扩展完整同步后恢复。桌面“手机连接”默认折叠；折叠不影响后台连接，异常可展开查看并复制。
 
 **切换 Wi-Fi／网卡或 IP 改变：** 重新运行 `start`。它会核对当前服务实例，切换到所选地址并验证接口，再生成新链接；把新链接传到手机即可。运行 `connection-info` 时若看到 `LAN_RESTART_REQUIRED`，先运行 `start`。多个局域网地址需要选择手机所在网络；未找到可用私有 IPv4 时只能在电脑本机查看。
 

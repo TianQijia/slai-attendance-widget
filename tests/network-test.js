@@ -11,7 +11,7 @@ const { sanitizeState } = globalThis.__slaiState;
 const { codedError, diagnoseError } = globalThis.__slaiErrors;
 const now = Date.parse("2030-04-08T04:00:00Z");
 const stamp = new Date(now).toISOString();
-const fixture = sanitizeState({ status: "ok", updatedAt: stamp, summaryUpdatedAt: stamp, month: "2030-04", days: [], todaySwipes: [], lastCompleteToday: { date: "2030-04-08", updatedAt: stamp, swipes: [] } });
+const fixture = sanitizeState({ schemaVersion: 5, status: "ok", updatedAt: stamp, summaryUpdatedAt: stamp, month: "2030-04", days: [], todaySwipes: [], lastCompleteToday: { date: "2030-04-08", updatedAt: stamp, swipes: [] } });
 const code = (report, id) => report.checks.find(check => check.id === id)?.code;
 const noPrivate = input => assert(!JSON.stringify(input).match(/PRIVATE_FIXTURE|viewToken|writeToken|studentName|cookie|192\.168\.|10\.44\.|\/private\//));
 async function run() {

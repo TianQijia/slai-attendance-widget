@@ -11,7 +11,7 @@ function canonical(value) {
 }
 function validateStateEnvelope(input) {
   try {
-    if (!input || Array.isArray(input) || Object.keys(input).sort().join() !== "schemaVersion,state" || input.schemaVersion !== 1 || input.state?.schemaVersion !== 4) throw new Error();
+    if (!input || Array.isArray(input) || Object.keys(input).sort().join() !== "schemaVersion,state" || input.schemaVersion !== 1 || input.state?.schemaVersion !== 5) throw new Error();
     const clean = sanitizeState(input.state);
     if (JSON.stringify(canonical(clean)) !== JSON.stringify(canonical(input.state))) throw new Error();
     return clean;

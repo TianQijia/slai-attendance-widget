@@ -48,7 +48,7 @@
   const numbers = { port: [1, 65535], httpStatus: [100, 599], timeoutMs: [0, 300000], elapsedMs: [0, 300000], ageSeconds: [0, 315360000], addressCount: [0, 1000] };
   const numberLabels = { port: "端口", httpStatus: "HTTP 状态", timeoutMs: "等待上限（毫秒）", elapsedMs: "请求耗时（毫秒）", ageSeconds: "距上次更新（秒）", addressCount: "候选地址数" };
   function sanitizeReport(input) {
-    const output = { schemaVersion: 1, version: /^\d+\.\d+\.\d+$/.test(input?.version) ? input.version : "1.2.0",
+    const output = { schemaVersion: 1, version: /^\d+\.\d+\.\d+$/.test(input?.version) ? input.version : "1.3.0",
       platform: ["darwin", "win32", "browser"].includes(input?.platform) ? input.platform : "other", checks: [] };
     const date = input?.createdAt;
     if (typeof date === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(date) && Number.isFinite(Date.parse(date))) output.createdAt = date;
@@ -83,7 +83,7 @@
     if (contactAge !== null) extension.ageSeconds = contactAge;
     const snapshot = envelope?.state?.lastCompleteToday;
     const dataAge = age(snapshot?.updatedAt);
-    const today = Number.isFinite(time) ? globalThis.__slaiTime.localDateKey(new Date(time)) : "";
+    const today = Number.isFinite(time) ? globalThis.__slaiTime.attendanceDateKey(new Date(time)) : "";
     const data = { id: "data", code: !snapshot || snapshot.date !== today || dataAge === null ? "NET_DATA_MISSING" : dataAge > 2100 ? "NET_DATA_OLD" : envelope.state.status !== "ok" ? "NET_DATA_FROZEN" : "NET_DATA_FRESH" };
     const detail = globalThis.__slaiErrors.sanitizeDiagnostic(envelope?.diagnostic || envelope?.state?.diagnostic);
     if (detail) data.diagnostic = detail;
