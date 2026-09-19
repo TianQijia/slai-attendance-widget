@@ -38,6 +38,7 @@ async function getState() {
 
 async function migrateStorage() {
   await chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+  await chrome.alarms.clear("slai-local-bridge");
   const stored = await chrome.storage.local.get(null);
   const obsolete = Object.keys(stored).filter((key) => ![STATE_KEY, "widgetWindowId", "desktopView"].includes(key));
   if (stored.desktopView !== undefined && !["calendar", "list"].includes(stored.desktopView)) obsolete.push("desktopView");
