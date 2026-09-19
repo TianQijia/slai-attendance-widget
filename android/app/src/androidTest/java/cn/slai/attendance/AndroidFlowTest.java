@@ -30,6 +30,15 @@ public final class AndroidFlowTest {
     volatile String mode = "normal";
 
     void main(Runnable action) { InstrumentationRegistry.getInstrumentation().runOnMainSync(action); }
+    String shellOutput(String command) throws IOException {
+        // UiAutomation executes an argument vector, not shell operators.
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(new android.os.ParcelFileDescriptor.AutoCloseInputStream(
+            InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand(command)), StandardCharsets.UTF_8))) {
+            StringBuilder output = new StringBuilder(); String line;
+            while ((line = reader.readLine()) != null) output.append(line);
+            return output.toString();
+        }
+    }
     Object eval(WebView view, String script) throws Exception {
         CountDownLatch done = new CountDownLatch(1); AtomicReference<String> value = new AtomicReference<>();
         main(() -> view.evaluateJavascript(script, raw -> { value.set(raw); done.countDown(); }));
@@ -179,11 +188,8 @@ public final class AndroidFlowTest {
             try (FileOutputStream stream = new FileOutputStream(output)) { screenshot.compress(Bitmap.CompressFormat.PNG, 100, stream); }
             // Gradle uninstalls the app after testing, so retain only this synthetic
             // screenshot in the emulator shell's temporary directory first.
-            try (android.os.ParcelFileDescriptor command = InstrumentationRegistry.getInstrumentation().getUiAutomation()
-                .executeShellCommand("cp /sdcard/Android/data/cn.slai.attendance/files/android-verified.png /data/local/tmp/slai-android-verified.png && echo copied");
-                BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(command.getFileDescriptor()), StandardCharsets.UTF_8))) {
-                assertEquals("copied", reader.readLine());
-            }
+            shellOutput("cp /sdcard/Android/data/cn.slai.attendance/files/android-verified.png /data/local/tmp/slai-android-verified.png");
+            assertEquals(String.valueOf(output.length()), shellOutput("stat -c %s /data/local/tmp/slai-android-verified.png"));
             eval(activity.dashboard, "document.querySelector('#logout').click();document.querySelector('#confirmLogout').click();true");
             until("document.querySelector('#todayDuration').textContent === '--:--:--'");
             assertFalse(activity.stateFile.getBaseFile().exists());
