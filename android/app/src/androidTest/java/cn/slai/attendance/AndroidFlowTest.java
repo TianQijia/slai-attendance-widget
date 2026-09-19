@@ -182,8 +182,9 @@ public final class AndroidFlowTest {
             assertEquals("ok", cached().getString("status"));
             assertEquals(6, cached().getJSONArray("todaySwipes").length());
             assertEquals(Arrays.asList(1, 1, 2), new ArrayList<>(pages));
-            assertEquals("90", eval(activity.school.web, "document.querySelector('.layui-laypage-limits select').value"));
             assertEquals("03:00:00", eval(activity.dashboard, "document.querySelector('#todayDuration').textContent"));
+            // Collection closes the school WebView; verify the captured request
+            // sizes instead of inspecting a table that has already been cleared.
             assertTrue(widePageSize.get());
             mode = "normal"; clearCookies(); refresh();
             assertEquals("auth", cached().getString("status"));
