@@ -79,7 +79,8 @@
     "scripts/prepare-android-tests.js",
     "tests/android-browser-test.js",
     "android/app/src/androidTest/java/cn/slai/attendance/AndroidFlowTest.java",
-    "android/gradle/LICENSE.txt"
+    "android/gradle/LICENSE.txt",
+    "android/app/src/main/res/xml/data_extraction_rules.xml"
   ],
   "archive": [
     "manifest.json",
