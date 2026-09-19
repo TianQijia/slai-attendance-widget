@@ -255,6 +255,7 @@ async function main() {
         alarms: { onAlarm: listener }, action: { onClicked: listener }, windows: { onRemoved: listener },
         tabs: { onUpdated: listener, get: async () => ({ status: 'complete', url: 'https://stu.slai.edu.cn/a/edu/acm/swipe/list' }) } }
     });
+    vm.runInContext(fs.readFileSync(path.join(extension, 'collection.js'), 'utf8'), paginationContext);
     vm.runInContext(fs.readFileSync(path.join(extension, 'background.js'), 'utf8'), paginationContext);
     paginationContext.runReader = async (_id, method) => page.evaluate((name) => globalThis.__slaiAttendance[name](), method);
     const threeVisits = await vm.runInContext("collectSwipePages(1, '2030-04-08')", paginationContext);
@@ -329,7 +330,7 @@ async function main() {
     await ui.waitForFunction(() => document.querySelector("#todayDuration").textContent === "03:00:01");
     await ui.clock.runFor(2000);
     assert.equal(await ui.locator("#todayDuration").innerText(), "03:00:03");
-    assert.deepEqual(await ui.evaluate(() => window.messages), ["get-state", "get-bridge"], "Local ticks must not issue server requests");
+    assert.deepEqual(await ui.evaluate(() => window.messages), ["get-state"], "Local ticks must not issue server requests");
     await ui.evaluate(() => {
       window.fixtureState.todaySwipes.push({ timestamp: "2030-04-08 10:00:00", direction: "出门" });
       window.fixtureState.lastCompleteToday.swipes = [...window.fixtureState.todaySwipes];
@@ -389,21 +390,6 @@ async function main() {
     await ui.evaluate(() => { window.failRequest = false; });
     await ui.locator("#refresh").click();
     assert.equal(await ui.locator("#diagnosticCard").isVisible(), false, "Recovery removes stale error details");
-    await ui.evaluate(() => {
-      window.failCopy = false;
-      window.deliverState({ type: "bridge-state", diagnostic: { code: "BRIDGE_TIMEOUT", stage: "bridge_push", timeoutMs: 3000, token: "PRIVATE_FIXTURE" } });
-    });
-    await ui.locator("#bridgeSettings summary").click();
-    assert.match(await ui.locator("#bridgeReport").innerText(), /BRIDGE_TIMEOUT/);
-    await ui.locator("#copyBridge").click();
-    const bridgeReport = await ui.evaluate(() => window.copiedReport);
-    assert.match(bridgeReport, /3 秒/); assert(!bridgeReport.includes("PRIVATE_FIXTURE"));
-    assert.match(await ui.locator("#bridgeStatus").innerText(), /已复制/);
-    await ui.evaluate(() => { window.failCopy = true; });
-    await ui.locator("#copyBridge").click();
-    assert.equal(await ui.evaluate(() => window.getSelection().toString()), bridgeReport);
-    await ui.evaluate(() => window.deliverState({ type: "bridge-state", diagnostic: null }));
-    assert.equal(await ui.locator("#bridgeReport").innerText(), "");
     assert.deepEqual(unexpected, [], "No unexpected network requests during tests");
     console.log("Passed: 23-row pagination, summary fallback, direct error causes and context, privacy, clipboard success/fallback, background disconnect/recovery, pending navigation, scheduling, auth pause and live UI.");
   } finally {

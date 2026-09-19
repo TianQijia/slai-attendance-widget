@@ -157,11 +157,25 @@
     if (!next) return false;
     // Use the portal's own control, preserving its form filters and session.
     const href = next.getAttribute('href');
-    if (href && !href.startsWith('javascript:') && href !== '#') {
-      const target = new URL(href, location.href);
-      if (target.origin !== location.origin || target.pathname !== location.pathname) return false;
+    let cancelDefault = false;
+    if (href && next.tagName === 'A') {
+      let target;
+      try { target = new URL(href, location.href); } catch { return false; }
+      if (target.protocol === 'javascript:') {
+        // Only recognize literal no-ops. Never evaluate or rewrite script URLs.
+        const script = target.href.slice('javascript:'.length);
+        if (!/^(?:\s*;)*\s*$/.test(script) && !/^\s*void\s*(?:\(\s*0\s*\)|\s+0)\s*;?\s*$/.test(script)) {
+          return { errorCode: 'SWIPE_SCRIPT_URL' };
+        }
+        cancelDefault = true;
+      } else if (target.origin !== location.origin || target.pathname !== location.pathname || target.username || target.password) return false;
     }
-    next.click();
+    // Cancel only the no-op default navigation, without stopping the portal's
+    // target or delegated click handlers. Always remove our temporary listener.
+    const preventDefault = event => event.preventDefault();
+    if (cancelDefault) next.addEventListener('click', preventDefault);
+    try { next.click(); }
+    finally { if (cancelDefault) next.removeEventListener('click', preventDefault); }
     return true;
   }
 

@@ -1,0 +1,7 @@
+html { min-height: 100%; }
+body.desktop { min-height: 100vh; }
+.desktop .shell { max-width: 520px; padding-bottom: 28px; }
+#manualStatus { margin: 16px 0 0; color: var(--muted); font-size: 12px; text-align: center; }
+.android-account { margin: 20px 0 10px; border-top: 1px solid var(--border); padding-top: 14px; font-size: 12px; color: var(--muted); }
+.android-account summary { cursor: pointer; padding: 8px 0; }
+.android-account button { margin-top: 8px; }

@@ -38,7 +38,8 @@ function swipeHtml(day = fixtureDay) {
         document.querySelector('.layui-table-page').innerHTML = '<div class="layui-box layui-laypage"><a href="javascript:;" class="layui-laypage-prev ' + (data.number === 1 ? 'layui-disabled' : '') + '" data-page="' + (data.number - 1) + '"><i></i></a><span class="layui-laypage-curr"><em></em><em>' + data.number + '</em></span><a href="javascript:;" class="layui-laypage-next ' + (data.number === 3 ? 'layui-disabled' : '') + '" data-page="' + (data.number + 1) + '"><i></i></a><span class="layui-laypage-count">共' + data.total + '条</span></div>';
         document.querySelector('.layui-table-init').style.display = 'none';
         document.querySelector('.layui-laypage-next').addEventListener('click', async event => {
-          event.preventDefault();
+          // Deliberately leave the javascript:; default action uncancelled.
+          // The real portal may do this; the isolated reader must handle it.
           if (event.currentTarget.classList.contains('layui-disabled')) return;
           const number = Number(event.currentTarget.dataset.page);
           document.querySelector('.layui-laypage-curr em:last-child').textContent = number;

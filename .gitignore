@@ -27,6 +27,13 @@ user-data/
 .DS_Store
 Thumbs.db
 node_modules/
+android/.gradle/
+android/**/build/
+android/local.properties
+*.jks
+*.keystore
+*.apk
+*.aab
 dist/
 test-results/
 playwright-report/

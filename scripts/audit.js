@@ -1,7 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const assert = require("node:assert/strict");
-const crypto = require("node:crypto");
 const root = path.resolve(__dirname, "..");
 const list = JSON.parse(fs.readFileSync(path.join(root, "release-files.json"), "utf8"));
 
@@ -28,18 +27,8 @@ function audit() {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "extension/manifest.json"), "utf8"));
   assert.equal(manifest.version, require("../package.json").version);
   assert.deepEqual(manifest.host_permissions, ["https://stu.slai.edu.cn/*", "https://sts.slai.edu.cn/*"]);
-  assert.deepEqual(manifest.optional_host_permissions, ["http://127.0.0.1/*"]);
+  assert.equal(manifest.optional_host_permissions, undefined);
   assert(!manifest.permissions.includes("cookies"));
-  for (const entries of [list.companion, ...Object.values(list.companionPlatforms)]) {
-    assert.equal(new Set(entries).size, entries.length);
-    for (const name of entries) assert(list.source.includes(name));
-  }
-  assert.equal(require("../node_modules/ws/package.json").version, require("../package.json").dependencies.ws);
-  for (const [name, sha256] of Object.entries(list.companionDependencies)) {
-    assert(/^node_modules\/ws\/(?:lib\/)?[A-Za-z0-9_.-]+$/.test(name), "Unexpected bundled dependency path");
-    assert(!fs.lstatSync(path.join(root, name)).isSymbolicLink());
-    assert.equal(crypto.createHash("sha256").update(fs.readFileSync(path.join(root, name))).digest("hex"), sha256, `Bundled dependency differs from its allowlisted SHA-256: ${name}`);
-  }
   for (const name of list.source.filter((file) => file.startsWith("extension/") && /\.(?:js|html|css|json)$/.test(file))) {
     const content = fs.readFileSync(path.join(root, name), "utf8");
     assert(!/document\.cookie|chrome\.cookies|storage\.sync/.test(content), `Unexpected credential/sync API in ${name}`);

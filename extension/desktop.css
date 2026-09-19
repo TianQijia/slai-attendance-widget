@@ -67,11 +67,6 @@ h2 { font-size: 19px; font-weight: 700; }
 summary { cursor: pointer; min-height: 26px; }
 details p { margin: 8px 0; line-height: 1.7; }
 .month-stats .summary { font-size: 14px; color: var(--text); }
-.connection-settings { margin: 18px 0 0; border-top: 1px solid var(--border); padding-top: 14px; font-size: 12px; color: var(--muted); }
-.connection-settings > summary { color: var(--text); font-size: 13px; }
-#bridgeSummaryStatus { float: right; color: var(--muted); }
-#bridgeSummaryStatus[data-error="true"] { color: var(--danger); }
-.connection-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; font-size: 11px; }
 .timeline-section { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
 .timeline-section h2 { font-size: 15px; }

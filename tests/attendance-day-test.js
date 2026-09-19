@@ -82,6 +82,7 @@ function harness({ instant, pages, onRead = () => {}, summaryMonth = "2030-04", 
   const migrated = harness({ instant: "2030-05-01T02:00:00+08:00", pages: {}, cached: old, summaryMonth: "2030-05" });
   await vm.runInContext("migrateStorage()", migrated.context);
   assert.equal(migrated.store.desktopView, "list"); assert.equal(migrated.store.obsolete, undefined);
+  assert.equal(migrated.store.bridgeSettings, undefined, "Retired companion pairing must be removed during migration");
   assert.equal(migrated.store.attendanceState.lastCompleteToday, null);
   await migrated.run(); assert.equal(migrated.store.attendanceState.month, "2030-04");
   assert.equal(migrated.store.attendanceState.days[0].duration, "06:00:00");
