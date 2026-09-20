@@ -1,0 +1,10 @@
+:host {
+  all: initial;
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-text-size-adjust: 100%;
+}
+/* Shared rules follow this reset so their color and font tokens take effect. */

@@ -81,7 +81,14 @@
     "tests/android-browser-test.js",
     "android/app/src/androidTest/java/cn/slai/attendance/AndroidFlowTest.java",
     "android/gradle/LICENSE.txt",
-    "android/app/src/main/res/xml/data_extraction_rules.xml"
+    "android/app/src/main/res/xml/data_extraction_rules.xml",
+    "ios/userscripts/host.js",
+    "ios/userscripts/widget.js",
+    "ios/userscripts/bootstrap.js",
+    "ios/userscripts/ios.css",
+    "scripts/build-ios.js",
+    "tests/ios-browser-test.js",
+    "docs/ios.md"
   ],
   "archive": [
     "manifest.json",
@@ -136,5 +143,36 @@
     "android/app/src/main/web/android-native.js",
     "android/app/src/main/web/android-host.js",
     "android/app/src/main/web/android-school-viewport.js"
+  ],
+  "iosInputs": [
+    "extension/widget.html",
+    "extension/widget.css",
+    "extension/desktop.css",
+    "extension/icons/slai-128.png",
+    "extension/icons/external-link.svg",
+    "extension/icons/refresh.svg",
+    "extension/error-utils.js",
+    "extension/time-utils.js",
+    "extension/state-utils.js",
+    "extension/page-reader.js",
+    "extension/collection.js",
+    "extension/report-utils.js",
+    "extension/view.js",
+    "extension/desktop-view.js",
+    "ios/userscripts/host.js",
+    "ios/userscripts/bootstrap.js",
+    "ios/userscripts/widget.js",
+    "ios/userscripts/ios.css",
+    "docs/ios.md",
+    "LICENSE",
+    "extension/icons/NOTICE.md",
+    "extension/icons/TABLER-LICENSE.txt"
+  ],
+  "iosArchive": [
+    "slai-attendance-safari.user.js",
+    "安装说明.md",
+    "LICENSE",
+    "icons-NOTICE.md",
+    "TABLER-LICENSE.txt"
   ]
 }

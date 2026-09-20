@@ -1,6 +1,12 @@
 (() => {
   // Only fixed text and allowlisted structural facts may reach storage or UI.
   const failures = {
+    IOS_USERSCRIPTS_UNAVAILABLE: ["没有取得 Userscripts 的本机存储接口", "请用 Userscripts 导入完整 .user.js 文件，确认脚本已启用且允许访问学校两个域名；不要作为书签脚本运行。"],
+    IOS_FRAME_ACCESS_DENIED: ["Safari 不允许读取当前内嵌学校页面，具体跳转原因无法读取", "打开学校页面核对登录状态；确认 Userscripts 获准访问学生系统和登录站点。仍失败时请复制排错信息。"],
+    IOS_FRAME_BLOCKED: ["当前页面的安全策略阻止了内嵌采集页", "请复制排错信息反馈；当前 Safari 采集方式需要学校页面允许同源内嵌。"],
+    IOS_FRAME_LOAD_FAILED: ["Safari 对内嵌学校页面触发了加载错误事件", "打开学校系统查看浏览器提示，再手动刷新；该事件没有提供具体网络或登录原因。"],
+    IOS_COLLECTION_INTERRUPTED: ["Safari 页面离开前台，本次手动采集已中断", "保持此标签页在前台，点击刷新重新读取；上次完整快照仍保留。"],
+    IOS_BUSY: ["已有一次学校采集正在进行", "等待本次采集完成后再操作。"],
     ANDROID_WEBVIEW_UNAVAILABLE: ["Android 内置浏览器不可用或缺少所需功能", "安装或更新 Android System WebView / Chrome，然后重新打开应用。"],
     ANDROID_BRIDGE_UNAVAILABLE: ["安卓界面未能连接本机采集组件", "关闭应用后重新打开；若仍失败，请复制排错信息。"],
     ANDROID_NATIVE_TIMEOUT: ["等待安卓本机组件响应超时", "关闭应用后重新打开，再手动刷新；超时不能确定学校网络状态。"],
