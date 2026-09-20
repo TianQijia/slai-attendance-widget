@@ -30,6 +30,8 @@
 
 ## 安装安卓 APK
 
+下载 [安卓 v1.4.2 APK](https://github.com/TianQijia/slai-attendance-widget/releases/download/v1.4.2/slai-attendance-android-v1.4.2.apk)，或查看[发布说明与校验文件](https://github.com/TianQijia/slai-attendance-widget/releases/tag/v1.4.2)。已安装同签名测试版可直接覆盖安装。
+
 1. 将 APK 传到自己的手机，打开并按系统提示允许该来源安装。
 2. 打开“SLAI 考勤”，点击“去登录”。在内置学校页面使用自己的账号完成登录；页面默认显示完整桌面宽度，可双指缩放或用顶部“缩小／放大”按钮调整。
 3. 点击“返回考勤”会回到面板并刷新一次；平时也可点右上角刷新。打开应用、回到前台或仅完成登录不会自行采集。
