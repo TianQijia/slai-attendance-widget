@@ -2,7 +2,8 @@
 
 ## 1.5.1 · 2026-09-20
 
-- 首次正式发布 iPhone / iPad Safari Userscripts 手动版，包含下方 1.5.0 的功能；提供单独脚本、安装 ZIP 和 SHA-256 校验文件。Android / Chrome 安装包继续使用 v1.4.2。
+- 首次正式发布 iPhone / iPad Safari Userscripts 手动版，包含下方 1.5.0 的功能；同一 Release 统一提供 Chrome 扩展 ZIP、Android APK、Safari 脚本与安装 ZIP，版本均为 v1.5.1，并提供统一的 SHA-256 校验文件。
+- Chrome / Android 沿用 v1.4.2 的功能与修复；Android 保持原发布签名，支持覆盖升级。
 - 根据 iPhone 试用反馈，安装说明明确要求登录前为学生系统与登录站点分别请求桌面网站，并补充手机模式登录出错后的重新进入步骤。
 - Safari 面板首次使用与登录提示同步说明桌面网站要求。
 - 补充停用及恢复方法：关闭脚本后刷新学校网页或关闭旧标签页；停用不清除学校登录、桌面网站设置或本机考勤缓存。

@@ -4,13 +4,23 @@
 
 <img src="docs/demo.png" alt="桌面浅色界面，记录均为虚构" width="320"> <img src="docs/demo-dark.png" alt="桌面深色界面，记录均为虚构" width="320">
 
-## 当前版本：1.5.1 · iOS Safari
+## 当前版本：1.5.1 · Chrome / Android / iOS
+
+三个平台的安装文件统一放在 [v1.5.1 发布页](https://github.com/TianQijia/slai-attendance-widget/releases/tag/v1.5.1)，按设备选择一个即可。
+
+| 平台 | 下载 | 刷新方式 |
+| --- | --- | --- |
+| 电脑 Chrome | [扩展 ZIP](https://github.com/TianQijia/slai-attendance-widget/releases/download/v1.5.1/slai-attendance-widget-v1.5.1.zip) | 每 30 分钟同步，也可手动刷新 |
+| Android | [安装 APK](https://github.com/TianQijia/slai-attendance-widget/releases/download/v1.5.1/slai-attendance-android-v1.5.1.apk) | 仅手动刷新 |
+| iPhone / iPad Safari | [安装 ZIP](https://github.com/TianQijia/slai-attendance-widget/releases/download/v1.5.1/slai-attendance-safari-v1.5.1.zip) | 通过 Userscripts 使用，仅手动刷新 |
+
+发布页同时提供单独的 Safari 脚本和覆盖全部安装文件的 `SHA256SUMS.txt`。
 
 - 新增 Safari 内考勤面板，通过免费的 Userscripts 导入。使用 Safari 学校登录，仅手动刷新，复用 Android / Chrome 的计算、分页和界面。
 - 安装指引明确要求先为学生系统和登录站点分别请求桌面网站，再登录；补充关闭脚本后刷新或关闭旧标签页的停用步骤。
 - Safari 版提供本机缓存、登录失效提示、读取中断和受限页面诊断；详细安装与验证范围见 [iOS 安装说明](docs/ios.md)。
 
-[v1.5.1 发布页](https://github.com/TianQijia/slai-attendance-widget/releases/tag/v1.5.1)提供 Safari 脚本、安装 ZIP 和 SHA-256 校验文件。Android 和 Chrome 的安装包继续使用 [v1.4.2](https://github.com/TianQijia/slai-attendance-widget/releases/tag/v1.4.2)，包含以下改动：
+Android 和 Chrome 统一构建为 v1.5.1，沿用 v1.4.2 的功能与修复：
 
 - 修复学校实际使用的无文字、无分页栏空表误报超时，凌晨正常合并前一天记录；诊断补充查询日期、页面日期和表格状态。
 - 安卓学校页面默认缩放到完整桌面宽度，支持双指缩放及“缩小／放大”按钮。
@@ -21,7 +31,7 @@
 - 安卓只在点击刷新时采集，Cookie 过期后重新登录；桌面 Chrome 保持每 30 分钟同步。
 - companion 已从当前代码和构建中移除，旧版本说明与公开 Release 保留。
 
-从源码构建可生成 `slai-attendance-widget-v1.5.1.zip`、`slai-attendance-android-v1.5.1.apk` 和 `ios-v1.5.1/` 内的 Safari 脚本与安装 ZIP。本次 v1.5.1 发布 Safari 安装文件，各平台已发布的安装包以 [GitHub Releases](https://github.com/TianQijia/slai-attendance-widget/releases) 为准。
+从源码构建可生成 `slai-attendance-widget-v1.5.1.zip`、`slai-attendance-android-v1.5.1.apk` 和 `ios-v1.5.1/` 内的 Safari 脚本与安装 ZIP。历史版本仍可在 [GitHub Releases](https://github.com/TianQijia/slai-attendance-widget/releases) 下载。
 
 ## iPhone / iPad Safari 面板
 
@@ -33,7 +43,7 @@
 
 ## 安装电脑扩展
 
-下载 [Chrome v1.4.2 扩展 ZIP](https://github.com/TianQijia/slai-attendance-widget/releases/download/v1.4.2/slai-attendance-widget-v1.4.2.zip)。
+下载 [Chrome v1.5.1 扩展 ZIP](https://github.com/TianQijia/slai-attendance-widget/releases/download/v1.5.1/slai-attendance-widget-v1.5.1.zip)。
 
 1. 解压扩展 ZIP 到长期保留的文件夹。
 2. 在 Chrome 打开 `chrome://extensions`，启用“开发者模式”。
@@ -46,7 +56,7 @@
 
 ## 安装安卓 APK
 
-下载 [安卓 v1.4.2 APK](https://github.com/TianQijia/slai-attendance-widget/releases/download/v1.4.2/slai-attendance-android-v1.4.2.apk)，或查看[发布说明与校验文件](https://github.com/TianQijia/slai-attendance-widget/releases/tag/v1.4.2)。已安装同签名测试版可直接覆盖安装。
+下载 [安卓 v1.5.1 APK](https://github.com/TianQijia/slai-attendance-widget/releases/download/v1.5.1/slai-attendance-android-v1.5.1.apk)，或查看[发布说明与校验文件](https://github.com/TianQijia/slai-attendance-widget/releases/tag/v1.5.1)。已安装同签名版本可直接覆盖升级。
 
 1. 将 APK 传到自己的手机，打开并按系统提示允许该来源安装。
 2. 打开“SLAI 考勤”，点击“去登录”。在内置学校页面使用自己的账号完成登录；页面默认显示完整桌面宽度，可双指缩放或用顶部“缩小／放大”按钮调整。
