@@ -9,14 +9,15 @@ const before = "2030-04-08", after = "2030-04-09";
 function harness({ instant, pages, onRead = () => {}, summaryMonth = "2030-04", cached = null }) {
   let now = Date.parse(instant), url = "https://stu.slai.edu.cn/a/edu/acm/swipe/attendList", page = 0;
   const queries = [], delays = [], reads = [];
+  const alarms = new Set(["slai-local-bridge", "slai-attendance-refresh"]);
   const store = { attendanceState: cached, desktopView: "list", bridgeSettings: { enabled: false }, obsolete: "PRIVATE_FIXTURE" };
   const event = { addListener() {}, removeListener() {} };
   class Clock extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } }
   const context = vm.createContext({ Date: Clock, URL, setTimeout, clearTimeout, console, chrome: {
     storage: { local: { setAccessLevel: async () => {}, get: async key => key === null ? structuredClone(store) : { [key]: structuredClone(store[key]) }, set: async values => Object.assign(store, structuredClone(values)), remove: async keys => { for (const key of keys) delete store[key]; } } },
     runtime: { onInstalled: event, onStartup: event, onMessage: event, sendMessage: async () => {} },
-    alarms: { onAlarm: event, create: async () => {}, clear: async () => {} }, action: { onClicked: event }, windows: { onRemoved: event },
-    tabs: { onUpdated: event, onRemoved: event, get: async () => ({ id: 1, url, status: "complete" }), update: async (_id, value) => { url = value.url; page = 0; queries.push(new URL(url).searchParams.get("swipeDate")); } }
+    alarms: { onAlarm: event, create: async name => alarms.add(name), clear: async name => alarms.delete(name) }, action: { onClicked: event }, windows: { onRemoved: event },
+    tabs: { onUpdated: event, onRemoved: event, get: async () => ({ id: 1, url, status: "complete" }), update: async (_id, value) => { url = value.url; page = 0; assert.equal(new URL(url).searchParams.get('pageSize'), '90'); queries.push(new URL(url).searchParams.get("swipeDate")); } }
   } });
   context.importScripts = (...names) => names.forEach(name => vm.runInContext(fs.readFileSync(path.join(root, "extension", name), "utf8"), context));
   vm.runInContext(fs.readFileSync(path.join(root, "extension/background.js"), "utf8"), context);
@@ -33,7 +34,7 @@ function harness({ instant, pages, onRead = () => {}, summaryMonth = "2030-04", 
     onRead({ date, page, result, setTime: value => { now = Date.parse(value); } });
     return result;
   };
-  return { context, queries, delays, reads, store, run: () => vm.runInContext("scrapeAttendance({ sourceTabId: 1 })", context) };
+  return { context, queries, delays, reads, store, alarms, run: () => vm.runInContext("scrapeAttendance({ sourceTabId: 1 })", context) };
 }
 
 (async () => {
@@ -54,6 +55,13 @@ function harness({ instant, pages, onRead = () => {}, summaryMonth = "2030-04", 
     onRead: ({ date, setTime }) => { if (date === before) setTime(after + "T00:00:01+08:00"); } });
   await midnight.run(); assert.deepEqual(midnight.queries, [before, after]);
   assert.equal(midnight.store.attendanceState.status, "ok");
+
+  const emptyAfterMidnight = harness({ instant: after + 'T00:16:00+08:00', pages: { [before]: pages[before] }, cached: complete });
+  await emptyAfterMidnight.run();
+  assert.deepEqual(emptyAfterMidnight.queries, [before, after]);
+  assert.equal(emptyAfterMidnight.store.attendanceState.status, 'ok');
+  assert.equal(emptyAfterMidnight.store.attendanceState.diagnostic, null);
+  assert.equal(emptyAfterMidnight.store.attendanceState.todaySwipes.length, 3, 'An empty second civil date must retain the previous date in the same attendance day');
 
   const crossing = harness({ instant: after + "T04:59:59+08:00", pages, cached: complete,
     onRead: ({ setTime }) => setTime(after + "T05:00:00+08:00") });
@@ -82,6 +90,9 @@ function harness({ instant, pages, onRead = () => {}, summaryMonth = "2030-04", 
   const migrated = harness({ instant: "2030-05-01T02:00:00+08:00", pages: {}, cached: old, summaryMonth: "2030-05" });
   await vm.runInContext("migrateStorage()", migrated.context);
   assert.equal(migrated.store.desktopView, "list"); assert.equal(migrated.store.obsolete, undefined);
+  assert.equal(migrated.store.bridgeSettings, undefined, "Retired companion pairing must be removed during migration");
+  assert(!migrated.alarms.has("slai-local-bridge"), "Retired companion must no longer wake the background every minute");
+  assert(migrated.alarms.has("slai-attendance-refresh"));
   assert.equal(migrated.store.attendanceState.lastCompleteToday, null);
   await migrated.run(); assert.equal(migrated.store.attendanceState.month, "2030-04");
   assert.equal(migrated.store.attendanceState.days[0].duration, "06:00:00");

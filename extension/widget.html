@@ -46,13 +46,6 @@
     <div class="day-list" id="dayList" hidden></div>
     <details class="month-stats"><summary>月度统计</summary><p class="summary" id="monthSummary">-- / -- 天达标</p><p>绿点：已达6小时，含节假日；黄点：工作日未达标。未达标节假日、未来及待同步日期不标点；当前考勤日按可靠估算显示状态点。</p><p>历史达标统计仅包含学校已提供汇总的历史工作日，目标6小时；不包含当前考勤日。</p></details>
   </section>
-  <details class="connection-settings" id="bridgeSettings">
-    <summary>手机连接<span id="bridgeSummaryStatus">未启用</span></summary>
-    <p>先运行同版本伴随服务，再粘贴本机配对码。折叠此处不会断开连接。</p>
-    <label for="bridgeToken">本机配对码</label><input id="bridgeToken" type="password" autocomplete="off" spellcheck="false">
-    <div class="connection-actions"><button id="enableBridge" type="button">启用并连接</button><button id="disableBridge" type="button">关闭连接</button></div>
-    <p id="bridgeStatus" role="status">尚未启用</p><pre id="bridgeReport"></pre><button id="copyBridge" type="button">复制连接排错信息</button>
-  </details>
   <section class="timeline-section" aria-label="当日在校时段">
     <div class="section-heading"><h2>当日在校时段</h2><span id="updatedAt">尚未更新</span></div>
     <canvas id="timelineCanvas" height="28" role="img" aria-label="暂无可靠数据"></canvas>

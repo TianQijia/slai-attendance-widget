@@ -129,16 +129,56 @@
       clean(row.textContent).match(/\d{4}-\d{2}-\d{2} [0-2]\d:[0-5]\d:[0-5]\d/)?.[0]
     ).filter(Boolean);
     const next = nextSwipeControl(current);
-    const loading = Array.from(document.querySelectorAll('.layui-table-init')).some((el) => el.getClientRects().length > 0);
+    const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+    const loading = Array.from(document.querySelectorAll('.layui-table-init, .layui-table-loading, [aria-busy="true"]')).some(visible);
+    const emptyText = /^(?:暂无|没有|无)(?:相关)?(?:数据|记录)[。.!！]?$/;
+    const main = document.querySelector('.layui-table-main');
+    const emptyMarker = Array.from((main || document).querySelectorAll('.layui-none, table td'))
+      .some(el => visible(el) && (emptyText.test(clean(el.innerText)) ||
+        // The school's loaded empty table renders a blank .layui-none and no
+        // pager. Only accept that marker inside the rendered main table.
+        (el.matches('.layui-table-view .layui-table-main > .layui-none') &&
+          !clean(el.textContent) && el.children.length === 0)));
+    const hasDataCells = swipeRows().some(row => Array.from(row.querySelectorAll('td'))
+      .some(cell => clean(cell.innerText) && !emptyText.test(clean(cell.innerText))));
+    // Empty Layui tables can omit the pager or leave an inert next button.
+    // A bare/hidden/loading table or a positive total is not proof of no data.
+    const empty = !hasDataCells && rowTimes.length === 0 && (total === 0 || (!Number.isFinite(total) && emptyMarker));
+    const sizeControl = swipePageSizeControl();
+    const filterDate = name => {
+      const value = document.querySelector(`[name="${name}"]`)?.value;
+      return /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value : undefined;
+    };
     return {
-      ready: !loading && (records.length > 0 || /共\s*\d+\s*条/.test(countText)),
+      ready: !loading && (rowTimes.length > 0 || total > 0 || empty),
       records,
+      observation: {
+        tableState: loading ? 'loading' : empty ? 'empty' : rowTimes.length ? 'rows' :
+          main || document.querySelector('table') ? 'unrecognized' : 'missing',
+        filterStartDate: filterDate('startTime'), filterEndDate: filterDate('endTime')
+      },
       pagination: {
-        current, total: Number.isFinite(total) ? total : null,
+        current, total: Number.isFinite(total) ? total : empty ? 0 : null,
         rowCount: rowTimes.length, signature: JSON.stringify(rowTimes),
-        hasNext: Boolean(next)
+        hasNext: !empty && Boolean(next),
+        canSetPageSize: !empty && !!sizeControl && sizeControl.value !== '90'
       }
     };
+  }
+
+  function swipePageSizeControl() {
+    return Array.from(document.querySelectorAll('.layui-laypage-limits select, .pagination select[name="pageSize"], .pager select[name="pageSize"]'))
+      .find(select => !select.disabled && Array.from(select.options).some(option => option.value === '90' && !option.disabled)) || null;
+  }
+
+  function setSwipePageSize() {
+    const page = extractSwipePage();
+    const select = swipePageSizeControl();
+    if (!page.ready || page.pagination.current !== 1 || !page.pagination.canSetPageSize || !select) return false;
+    select.value = '90';
+    // Use the portal's change handler so its Ajax limit and filters agree.
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
   }
 
   function nextSwipeControl(current) {
@@ -153,17 +193,32 @@
 
   function advanceSwipePage() {
     const page = extractSwipePage();
+    if (!page.ready || !page.pagination.hasNext) return false;
     const next = nextSwipeControl(page.pagination.current);
     if (!next) return false;
     // Use the portal's own control, preserving its form filters and session.
     const href = next.getAttribute('href');
-    if (href && !href.startsWith('javascript:') && href !== '#') {
-      const target = new URL(href, location.href);
-      if (target.origin !== location.origin || target.pathname !== location.pathname) return false;
+    let cancelDefault = false;
+    if (href && next.tagName === 'A') {
+      let target;
+      try { target = new URL(href, location.href); } catch { return false; }
+      if (target.protocol === 'javascript:') {
+        // Only recognize literal no-ops. Never evaluate or rewrite script URLs.
+        const script = target.href.slice('javascript:'.length);
+        if (!/^(?:\s*;)*\s*$/.test(script) && !/^\s*void\s*(?:\(\s*0\s*\)|\s+0)\s*;?\s*$/.test(script)) {
+          return { errorCode: 'SWIPE_SCRIPT_URL' };
+        }
+        cancelDefault = true;
+      } else if (target.origin !== location.origin || target.pathname !== location.pathname || target.username || target.password) return false;
     }
-    next.click();
+    // Cancel only the no-op default navigation, without stopping the portal's
+    // target or delegated click handlers. Always remove our temporary listener.
+    const preventDefault = event => event.preventDefault();
+    if (cancelDefault) next.addEventListener('click', preventDefault);
+    try { next.click(); }
+    finally { if (cancelDefault) next.removeEventListener('click', preventDefault); }
     return true;
   }
 
-  globalThis.__slaiAttendance = { findAttendanceUrl, extractAttendance, extractSwipeRecords, extractSwipePage, advanceSwipePage };
+  globalThis.__slaiAttendance = { findAttendanceUrl, extractAttendance, extractSwipeRecords, extractSwipePage, setSwipePageSize, advanceSwipePage };
 })();

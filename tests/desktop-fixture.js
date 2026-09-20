@@ -24,10 +24,9 @@ function bootstrap(config) {
   const listeners = [];
   window.__fixtureNotify = message => listeners.forEach(fn => fn(message));
   window.chrome = {
-    runtime: { getManifest: () => ({ version: "1.3.0" }), onMessage: { addListener: fn => listeners.push(fn) },
+    runtime: { getManifest: () => ({ version: "1.4.0" }), onMessage: { addListener: fn => listeners.push(fn) },
       sendMessage: async message => {
         window.__testMessages.push(message.type);
-        if (message.type === "get-bridge" || message.type === "set-bridge") return { ok: true, enabled: message.enabled === true };
         if (["get-state", "refresh"].includes(message.type)) return { ok: true, state: structuredClone(window.__fixtureState) };
         return { ok: true };
       }

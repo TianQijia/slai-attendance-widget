@@ -1,0 +1,49 @@
+plugins { id 'com.android.application' }
+
+def packageInfo = new groovy.json.JsonSlurper().parse(file('../../package.json'))
+android {
+    namespace 'cn.slai.attendance'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'cn.slai.attendance'
+        minSdk 26
+        targetSdk 35
+        versionCode 10402
+        versionName packageInfo.version
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    signingConfigs {
+        localRelease {
+            if (System.getenv('SLAI_ANDROID_KEYSTORE')) {
+                storeFile file(System.getenv('SLAI_ANDROID_KEYSTORE'))
+                storePassword System.getenv('SLAI_ANDROID_STORE_PASSWORD')
+                keyAlias 'slai-attendance'
+                keyPassword System.getenv('SLAI_ANDROID_STORE_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release { minifyEnabled false; signingConfig signingConfigs.localRelease }
+    }
+    testBuildType 'release'
+    buildFeatures { buildConfig true }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    sourceSets.main.assets.srcDirs = [layout.buildDirectory.dir('generated/slaiAssets')]
+    sourceSets.androidTest.assets.srcDirs = [layout.buildDirectory.dir('generated/slaiTestAssets')]
+}
+tasks.register('prepareWebAssets', Exec) {
+    workingDir '../..'
+    commandLine 'node', 'scripts/prepare-android.js'
+}
+tasks.named('preBuild').configure { dependsOn 'prepareWebAssets' }
+tasks.register('prepareTestFixtures', Exec) {
+    workingDir '../..'
+    commandLine 'node', 'scripts/prepare-android-tests.js'
+}
+tasks.matching { it.name == 'mergeReleaseAndroidTestAssets' }.configureEach { dependsOn 'prepareTestFixtures' }
+dependencies {
+    implementation 'androidx.webkit:webkit:1.14.0'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test:rules:1.6.1'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+}

@@ -11,13 +11,12 @@ const root = path.resolve(__dirname, "..");
       const page = await browser.newPage({ viewport: { width: mobile ? 360 : 440, height: 900 } });
       // Load the shipped layouts, styles and shared renderer without the
       // transport bootstraps so dates and source snapshots are deterministic.
-      const html = await fs.readFile(path.join(root, mobile ? "companion/viewer.html" : "extension/widget.html"), "utf8");
+      const html = await fs.readFile(path.join(root, "extension/widget.html"), "utf8");
       await page.setContent(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/<link\b[^>]*>/g, ""));
       await page.addStyleTag({ path: path.join(root, "extension/widget.css") });
-      if (!mobile) await page.addStyleTag({ path: path.join(root, "extension/desktop.css") });
+      await page.addStyleTag({ path: path.join(root, "extension/desktop.css") });
       for (const file of ["error-utils.js", "time-utils.js", "state-utils.js", "report-utils.js", "view.js"]) await page.addScriptTag({ path: path.join(root, "extension", file) });
-      if (!mobile) { await page.addScriptTag({ path: path.join(root, "extension/desktop-view.js") }); await page.locator("#listView").click(); }
-      await page.evaluate(value => { mobileView = value; }, mobile);
+      { await page.addScriptTag({ path: path.join(root, "extension/desktop-view.js") }); await page.locator("#listView").click(); }
       const renderAt = (date, state) => page.evaluate(({ date, state }) => { viewNow = () => Date.parse(date); render(state); }, { date, state });
       const labels = () => page.locator(".day-date strong").allTextContents();
       const row = label => page.locator(".day-row").filter({ has: page.locator(".day-date strong", { hasText: new RegExp(`^${label}$`) }) });

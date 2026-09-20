@@ -24,6 +24,19 @@ const root = path.resolve(__dirname, "..");
   let mode = "auth";
   let testDate;
   const visitedPages = [];
+  const securityErrors = [];
+  const watched = new WeakMap();
+  function watchSecurity(page) {
+    if (watched.has(page)) return watched.get(page);
+    const relevant = text => /content security policy|javascript.*url.*violat|violat.*script-src/i.test(text);
+    page.on("console", message => { if (relevant(message.text())) securityErrors.push({ source: "console", type: message.type() }); });
+    const ready = context.newCDPSession(page).then(async session => {
+      session.on("Log.entryAdded", ({ entry }) => { if (relevant(entry.text)) securityErrors.push({ source: "cdp", type: entry.level }); });
+      await session.send("Log.enable");
+    });
+    watched.set(page, ready);
+    return ready;
+  }
   try {
     context = await chromium.launchPersistentContext(path.join(temporary, "profile"), {
       channel: "chromium", headless: true, timezoneId: "Asia/Shanghai", viewport: null,
@@ -32,6 +45,7 @@ const root = path.resolve(__dirname, "..");
       args: ["--enable-unsafe-extension-debugging",
         "--host-resolver-rules=MAP stu.slai.edu.cn 127.0.0.1, MAP sts.slai.edu.cn 127.0.0.1"]
     });
+    context.on("page", page => { watchSecurity(page).catch(() => {}); });
     await context.route("https://stu.slai.edu.cn/**", async route => {
       const url = new URL(route.request().url());
       if (mode === "auth") return route.fulfill({ status: 302, headers: { location: "https://sts.slai.edu.cn/signin" }, body: "" });
@@ -41,10 +55,15 @@ const root = path.resolve(__dirname, "..");
         if (mode === "auth-on-swipes") return route.fulfill({ status: 302, headers: { location: "https://sts.slai.edu.cn/signin" }, body: "" });
         const number = Number(url.searchParams.get("pageNo") || 1);
         visitedPages.push(number);
-        if (route.request().resourceType() === "document") return route.fulfill({ contentType: "text/html; charset=utf-8", body: swipeHtml(testDate) });
+        if (route.request().resourceType() === "document") {
+          assert.equal(url.searchParams.get('pageSize'), '90');
+          const html = swipeHtml(testDate, { mode, pageSizeControl: mode === 'wide', emptyCount: false });
+          return route.fulfill({ contentType: "text/html; charset=utf-8", body: mode === "script-url" ? html.replaceAll('href="javascript:;"', 'href="javascript:window.PRIVATE_FIXTURE = true"') : html });
+        }
         await new Promise(resolve => setTimeout(resolve, 300));
         if (mode === "timeout") return route.fulfill({ status: 503, body: "Simulated page failure" });
-        return route.fulfill({ json: swipeData(number, mode) });
+        if (mode === 'wide') assert.equal(url.searchParams.get('pageSize'), '90');
+        return route.fulfill({ json: swipeData(number, mode, Number(url.searchParams.get('pageSize') || 10)) });
       }
       return route.fulfill({ contentType: "text/html; charset=utf-8", body: '<a href="/a/edu/acm/swipe/attendList">学生考勤统计查询</a>' });
     });
@@ -110,6 +129,7 @@ const root = path.resolve(__dirname, "..");
     testDate = await worker.evaluate(() => localDateKey());
     await worker.evaluate(() => saveState({ status: "loading", days: [] }));
     const school = await context.newPage();
+    await watchSecurity(school);
     const summaryUrl = "https://stu.slai.edu.cn/a/edu/acm/swipe/attendList";
     async function refreshFixture() {
       visitedPages.length = 0;
@@ -125,7 +145,31 @@ const root = path.resolve(__dirname, "..");
     assert.equal(complete.status, "ok");
     assert.equal(complete.todaySwipes.length, 6);
     assert.deepEqual(visitedPages, [1, 2, 3], "The installed extension must click Layui controls through its isolated reader");
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.deepEqual(securityErrors, [], "Pagination must not emit CSP violations in console or CDP security logs");
     await page.waitForFunction(() => document.querySelector("#todayDuration").textContent === "03:00:00");
+
+    mode = "script-url";
+    const unsupported = await refreshFixture();
+    assert.equal(unsupported.status, "partial");
+    assert.equal(unsupported.diagnostic.code, "SWIPE_SCRIPT_URL");
+    assert.equal(unsupported.diagnostic.stage, "advance_swipes");
+    assert.equal(unsupported.diagnostic.page, 2);
+    assert.equal(unsupported.diagnostic.currentPage, 1);
+    assert.equal(unsupported.diagnostic.rowsRead, 10);
+    assert.equal(unsupported.diagnostic.expectedTotal, 23);
+    assert.equal(unsupported.updatedAt, complete.updatedAt);
+    assert.deepEqual(unsupported.lastCompleteToday, complete.lastCompleteToday);
+    assert.deepEqual(visitedPages, [1]);
+    await page.waitForFunction(() => document.querySelector("#diagnosticReport").textContent.includes("SWIPE_SCRIPT_URL"));
+    await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async text => { window.copiedDiagnostic = text; } } }));
+    await page.locator("#copyDiagnostic").click();
+    await page.waitForFunction(() => Boolean(window.copiedDiagnostic));
+    const copied = await page.evaluate(() => window.copiedDiagnostic);
+    assert.match(copied, /SWIPE_SCRIPT_URL/);
+    assert.match(copied, /已读.*10.*条/);
+    assert.match(copied, /预期总数.*23.*条/);
+    assert(!/PRIVATE_FIXTURE|000000000|javascript:/.test(copied + JSON.stringify(unsupported)));
 
     mode = "timeout";
     const partial = await refreshFixture();
@@ -159,6 +203,20 @@ const root = path.resolve(__dirname, "..");
     assert.deepEqual(changed.todaySwipes, []);
     assert.deepEqual(visitedPages, [1, 2]);
 
+    mode = 'empty';
+    const empty = await refreshFixture();
+    assert.equal(empty.status, 'ok'); assert.equal(empty.diagnostic, null);
+    assert.deepEqual(empty.todaySwipes, []); assert.deepEqual(empty.lastCompleteToday.swipes, []);
+    assert.deepEqual(visitedPages, [1]);
+    await page.waitForFunction(() => document.querySelector('#todayDuration').textContent === '00:00:00');
+    await page.locator('#diagnosticCard').waitFor({ state: 'hidden' });
+    mode = 'wide';
+    const wide = await refreshFixture();
+    assert.equal(wide.status, 'ok'); assert.equal(wide.todaySwipes.length, 6);
+    assert.deepEqual(visitedPages, [1, 1, 2]);
+    assert.equal(await school.locator('.layui-laypage-limits select').inputValue(), '90');
+    await page.waitForFunction(() => document.querySelector('#todayDuration').textContent === '03:00:00');
+
     mode = "auth-on-swipes";
     const expired = await refreshFixture();
     assert.equal(expired.status, "auth");
@@ -174,6 +232,7 @@ const root = path.resolve(__dirname, "..");
     assert.deepEqual(visitedPages, [1, 2, 3]);
     assert(!JSON.stringify(recovered).includes("000000000"));
     await page.locator("#diagnosticCard").waitFor({ state: "hidden" });
+    assert.deepEqual(securityErrors, []);
     console.log("ZIP installation passed: real extension scripting, 23-row Layui pagination, detailed timeout/count diagnostics through storage and UI, login redirects, recovery and auth pause. All school responses were simulated.");
   } finally {
     if (context) await context.close();
