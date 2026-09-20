@@ -1,10 +1,16 @@
 # SLAI 考勤小组件
 
-在电脑 Chrome 或独立安卓应用中查看今日在校时间、6 小时目标、当月日历及进出时段。学生自制的非官方工具，结果以学校系统为准；MIT 开源，运行时不使用 AI。
+在电脑 Chrome、独立安卓应用或 iPhone Safari 面板中查看今日在校时间、6 小时目标、当月日历及进出时段。学生自制的非官方工具，结果以学校系统为准；MIT 开源，运行时不使用 AI。
 
 <img src="docs/demo.png" alt="桌面浅色界面，记录均为虚构" width="320"> <img src="docs/demo-dark.png" alt="桌面深色界面，记录均为虚构" width="320">
 
-## 当前版本：1.4.2
+## 当前版本：1.5.1 · iOS Safari
+
+- 新增 Safari 内考勤面板，通过免费的 Userscripts 导入。使用 Safari 学校登录，仅手动刷新，复用 Android / Chrome 的计算、分页和界面。
+- 安装指引明确要求先为学生系统和登录站点分别请求桌面网站，再登录；补充关闭脚本后刷新或关闭旧标签页的停用步骤。
+- Safari 版提供本机缓存、登录失效提示、读取中断和受限页面诊断；详细安装与验证范围见 [iOS 安装说明](docs/ios.md)。
+
+[v1.5.1 发布页](https://github.com/TianQijia/slai-attendance-widget/releases/tag/v1.5.1)提供 Safari 脚本、安装 ZIP 和 SHA-256 校验文件。Android 和 Chrome 的安装包继续使用 [v1.4.2](https://github.com/TianQijia/slai-attendance-widget/releases/tag/v1.4.2)，包含以下改动：
 
 - 修复学校实际使用的无文字、无分页栏空表误报超时，凌晨正常合并前一天记录；诊断补充查询日期、页面日期和表格状态。
 - 安卓学校页面默认缩放到完整桌面宽度，支持双指缩放及“缩小／放大”按钮。
@@ -15,9 +21,19 @@
 - 安卓只在点击刷新时采集，Cookie 过期后重新登录；桌面 Chrome 保持每 30 分钟同步。
 - companion 已从当前代码和构建中移除，旧版本说明与公开 Release 保留。
 
-构建产物为 `slai-attendance-widget-v1.4.2.zip` 和 `slai-attendance-android-v1.4.2.apk`。已发布版本以 [GitHub Releases](https://github.com/TianQijia/slai-attendance-widget/releases) 为准；开发构建不表示已公开发布。
+从源码构建可生成 `slai-attendance-widget-v1.5.1.zip`、`slai-attendance-android-v1.5.1.apk` 和 `ios-v1.5.1/` 内的 Safari 脚本与安装 ZIP。本次 v1.5.1 发布 Safari 安装文件，各平台已发布的安装包以 [GitHub Releases](https://github.com/TianQijia/slai-attendance-widget/releases) 为准。
+
+## iPhone / iPad Safari 面板
+
+下载 [Safari v1.5.1 安装 ZIP](https://github.com/TianQijia/slai-attendance-widget/releases/download/v1.5.1/slai-attendance-safari-v1.5.1.zip)，或单独下载 [Userscript 脚本](https://github.com/TianQijia/slai-attendance-widget/releases/download/v1.5.1/slai-attendance-safari.user.js)。
+
+安装免费的 Userscripts，将构建产物 `slai-attendance-safari.user.js` 放入脚本目录并允许两个学校站点，然后用 Safari 普通标签页打开学校首页。**登录前，必须为学生系统 `stu.slai.edu.cn` 和登录站点 `sts.slai.edu.cn` 分别选择“页面菜单 → 更多（…）→ 请求桌面网站”**。完成学校登录后点“返回考勤并刷新”。无需 Apple 开发者会员或每周续签。[完整安装说明与已知限制](docs/ios.md)
+
+不用时关闭 Userscripts 中的“SLAI 考勤 · Safari 手动版”，再刷新学校网页或关闭旧标签页即可停用；学校登录、桌面网站设置和本机考勤缓存会保留。[停用与恢复步骤](docs/ios.md#停用与恢复)
 
 ## 安装电脑扩展
+
+下载 [Chrome v1.4.2 扩展 ZIP](https://github.com/TianQijia/slai-attendance-widget/releases/download/v1.4.2/slai-attendance-widget-v1.4.2.zip)。
 
 1. 解压扩展 ZIP 到长期保留的文件夹。
 2. 在 Chrome 打开 `chrome://extensions`，启用“开发者模式”。
@@ -55,7 +71,7 @@
 
 排错卡片显示直接原因、失败阶段、稳定代码及建议操作。展开可查看查询日期、页面日期、表格状态、页码、条数、等待上限等现场信息；“复制排错信息”只复制脱敏诊断，自动复制受限时可手动复制。
 
-Chrome 缓存由 `chrome.storage.local` 管理；Android 缓存位于应用私有目录。覆盖升级不会把安装文件和用户缓存混在一起。账号、Cookie、会话 URL、原始学校页面和原始异常不进入应用诊断或发布包。[隐私说明](PRIVACY.md)
+Chrome 缓存由 `chrome.storage.local` 管理；Android 缓存位于应用私有目录；Safari 脚本缓存由 Userscripts 管理。覆盖升级不会把安装文件和用户缓存混在一起。账号、Cookie、会话 URL、原始学校页面和原始异常不进入应用诊断或发布包。[隐私说明](PRIVACY.md)
 
 ## 旧版 companion（已停用）
 
@@ -74,7 +90,7 @@ Chrome 缓存由 `chrome.storage.local` 管理；Android 缓存位于应用私�
 
 ```sh
 npm ci
-npx playwright install chromium
+npx playwright install chromium webkit
 npm test
 npm run audit:release
 npm run build
@@ -93,7 +109,9 @@ npm run test:android
 
 安卓构建同时编译 release APK、测试 APK 并运行 Lint。签名密钥首次在本机 `local-data/android-signing` 生成，目录已忽略；请私下备份，用于以后覆盖升级，不能提交到仓库或放入分发包。`npm run test:android` 使用相同签名的 release 构建；仪器测试的虚构页面只打入测试 APK。
 
-`release-files.json` 明确列出源码、扩展 ZIP 和 Android 网页资源；Android UI 与采集器在构建时从共享源码生成，不复制维护两套计时逻辑。`npm run preview` 提供仅含虚构数据的桌面预览。
+`npm run build:ios` 单独构建 Safari 脚本及安装 ZIP；`npm run test:ios` 在 Chromium 和 WebKit 上运行虚构学校页面流程，`npm run test:install` 还会验证最终 Safari ZIP。此验证不能替代 iPhone 上真实学校登录与会话保留试用。
+
+`release-files.json` 明确列出源码、扩展 ZIP、Android 网页资源和 Safari 输入／ZIP 内容；手机界面与采集器在构建时从共享源码生成，不复制维护计时逻辑。`npm run preview` 提供仅含虚构数据的桌面预览。
 
 ## 许可
 

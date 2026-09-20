@@ -8,7 +8,7 @@ android {
         applicationId 'cn.slai.attendance'
         minSdk 26
         targetSdk 35
-        versionCode 10402
+        versionCode 10501
         versionName packageInfo.version
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }

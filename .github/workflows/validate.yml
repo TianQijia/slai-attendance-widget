@@ -21,7 +21,7 @@ jobs:
           node-version: '22.23.2'
           cache: npm
       - run: npm ci
-      - run: npx playwright install chromium
+      - run: npx playwright install chromium webkit
       - run: npm test
       - run: npm run audit:release
       - run: npm run build
@@ -32,6 +32,7 @@ jobs:
           path: |
             dist/*.zip
             dist/SHA256SUMS.txt
+            dist/ios-v*/**
   android:
     runs-on: ubuntu-24.04
     timeout-minutes: 35

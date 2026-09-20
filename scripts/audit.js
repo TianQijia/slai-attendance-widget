@@ -33,6 +33,12 @@ function audit() {
     const content = fs.readFileSync(path.join(root, name), "utf8");
     assert(!/document\.cookie|chrome\.cookies|storage\.sync/.test(content), `Unexpected credential/sync API in ${name}`);
   }
+  for (const name of list.iosInputs || []) {
+    assert(list.source.includes(name), `iOS input missing from source allowlist: ${name}`);
+    if (/\.js$/.test(name)) {
+      assert(!/document\.cookie|chrome\.cookies|GM\.xmlHttpRequest|\beval\s*\(|new Function\s*\(/.test(fs.readFileSync(path.join(root, name), 'utf8')), `Unexpected API in Safari input: ${name}`);
+    }
+  }
   for (const [size, file] of Object.entries(manifest.icons)) {
     assert(list.archive.includes(file) && list.source.includes("extension/" + file));
     const png = fs.readFileSync(path.join(root, "extension", file));

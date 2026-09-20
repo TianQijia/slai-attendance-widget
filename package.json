@@ -1,6 +1,6 @@
 {
   "name": "slai-attendance-widget",
-  "version": "1.4.2",
+  "version": "1.5.1",
   "private": true,
   "description": "SLAI campus attendance Chrome extension",
   "license": "MIT",
@@ -8,13 +8,15 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node tests/time-test.js && node tests/attendance-day-test.js && node tests/month-test.js && node tests/desktop-test.js && node tests/pagination-test.js && node tests/run-tests.js && node tests/android-browser-test.js",
+    "test": "node tests/time-test.js && node tests/attendance-day-test.js && node tests/month-test.js && node tests/desktop-test.js && node tests/pagination-test.js && node tests/run-tests.js && node tests/android-browser-test.js && npm run test:ios",
     "preview": "node scripts/preview.js",
     "audit:release": "node scripts/audit.js",
-    "build": "node scripts/build.js",
-    "test:install": "node tests/install-test.js",
+    "build": "node scripts/build.js && npm run build:ios",
+    "test:install": "node tests/install-test.js && node tests/ios-browser-test.js --zip",
     "build:android": "node scripts/build-android.js",
-    "test:android": "node scripts/build-android.js --test"
+    "test:android": "node scripts/build-android.js --test",
+    "build:ios": "node scripts/build-ios.js",
+    "test:ios": "node tests/ios-browser-test.js"
   },
   "devDependencies": {
     "fflate": "0.8.2",
