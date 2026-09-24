@@ -101,8 +101,8 @@
 
     for (const row of swipeRows()) {
       const cells = Array.from(row.querySelectorAll("td")).map((cell) => clean(cell.innerText));
-      // 学校的月度考勤只使用“闸机-…”校园道闸；“宿舍_道闸…”不计入。
-      const campusGate = cells.find((cell) => /^闸机[-_]/.test(cell) && !cell.includes("宿舍"));
+      // 校园闸机名称可能带楼层等前缀；宿舍闸机仍不计入考勤。
+      const campusGate = cells.find((cell) => cell.includes("闸机") && !cell.includes("宿舍"));
       const timestamp = cells.find((cell) => timePattern.test(cell));
       const direction = cells.find((cell) => /^(?:进门|出门)$/.test(cell));
       if (!campusGate || !timestamp || !direction) continue;

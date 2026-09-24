@@ -1,7 +1,7 @@
 // Fictional records with the portal's Layui markup. No school data or sessions.
 const fixtureDay = "2030-04-08";
 const rows = [
-  ["闸机-东", "出门", "11:00:00"],
+  ["2楼-闸机-测试3-出_门禁通道_1", "出门", "11:00:00"],
   ["闸机-东", "进门", "10:00:00"],
   ["闸机-东", "出门", "09:00:00"],
   ...Array.from({ length: 17 }, (_, i) => ["宿舍_道闸", "出门", `08:${59 - i}:00`]),

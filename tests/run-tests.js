@@ -243,6 +243,14 @@ async function main() {
     const parsed = await page.evaluate(() => __slaiAttendance.extractSwipePage());
     assert.equal(parsed.ready, true);
     assert.deepEqual(parsed.records, fixtureState.todaySwipes);
+    await page.setContent(`<table>
+      <tr><td>2楼-闸机-测试3-出_门禁通道_1</td><td>出门</td><td>${day} 10:00:00</td></tr>
+      <tr><td>2楼-普通门禁-测试3</td><td>进门</td><td>${day} 09:00:00</td></tr>
+      <tr><td>宿舍-闸机-测试1</td><td>进门</td><td>${day} 08:00:00</td></tr>
+    </table><div>共3条</div>`);
+    assert.deepEqual((await page.evaluate(() => __slaiAttendance.extractSwipePage())).records, [
+      { direction: "出门", timestamp: `${day} 10:00:00` }
+    ], "A campus gate may contain prefixes and suffixes, while ordinary access controls and dormitory gates stay excluded");
     await page.setContent('<table><tr><td>宿舍_道闸入1</td><td>进门</td><td>2030-04-08 09:00:00</td></tr></table><div>共1条</div>');
     assert.deepEqual((await page.evaluate(() => __slaiAttendance.extractSwipePage())).records, []);
     // Three visits, newest first; a dorm-only middle page must not end collection.
